@@ -1,0 +1,19 @@
+# JetBrains IDE
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# bootc-image-builder / local disk image output
+output/
+*.qcow2
+*.raw
+*.vmdk
+*.ami
+*.iso
+*.img
+
+# Build logs and scratch
+*.log
+tmp/
