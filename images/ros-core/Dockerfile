@@ -29,18 +29,15 @@ ENV ROS_DISTRO=jazzy \
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# ── Set up the ROS 2 package source ──
-# tavie/ros2 is a community COPR providing FHS-compliant ROS 2 RPMs for Fedora.
-# The .repo file carries the COPR signing key and enables gpgcheck, so every
-# install is GPG-verified. This is the RPM equivalent of the reference image's
-# "add apt key + write sources.list" step.
-#
-# `rpm -E %fedora` expands to the base image's Fedora release (43), so the same
-# Dockerfile follows bootc-os as it moves to newer Fedora versions.
-#
-# (Alternative if the COPR plugin is available: `dnf -y copr enable tavie/ros2`.)
-RUN curl -fsSL -o /etc/yum.repos.d/tavie-ros2.repo \
-      "https://copr.fedorainfracloud.org/coprs/tavie/ros2/repo/fedora-$(rpm -E %fedora)/tavie-ros2-fedora-$(rpm -E %fedora).repo"
+# ── Set up the ROS 2 package sources ──
+# enable-repos.sh adds the stock Fedora repos that bootc-os omits (the tavie
+# ROS RPMs need ordinary Fedora libraries) and drops the tavie/ros2 COPR repo
+# with its baseurl pinned to the real Fedora release (bootc-os overrides dnf's
+# $releasever to a snapshot id, which otherwise 404s the COPR). See the script
+# header for the full rationale. This replaces the reference image's "add apt
+# key + write sources.list" step.
+COPY enable-repos.sh /tmp/enable-repos.sh
+RUN bash /tmp/enable-repos.sh && rm -f /tmp/enable-repos.sh
 
 # ── Install ros-core ──
 # ros-core is the minimal ROS 2 metapackage: the client libraries (rclcpp,
