@@ -181,9 +181,30 @@ podman build -t hummingbird-ros2-poc/gazebo:latest     images/gazebo
 
 ## Open questions / risks
 
-- **Dep resolution CONFIRMED** for ros-core/ros-base/simulation/gazebo on
-  fedora-43 x86_64 (dry-run). Still need a full `podman build` + runtime smoke
-  test (the dry-run doesn't download/GPG-verify or run anything).
+- **Build status (real `podman build`, 2026-08-29/30, amd64 emulation):**
+  - `ros-core` ✅ built (1.96 GB) + smoke-tested (env, pub/sub, bootc-valid).
+  - `ros-base` ✅ built (2.29 GB) + smoke-tested (199 pkgs; tf2, tf2_ros,
+    robot_state_publisher, rosbag2, geometry_msgs all present).
+  - `simulation` ❌ **BLOCKED — boost version skew.** `gazebo` ❌ blocked by the
+    **same** chain (both pull the gz rendering stack). See next bullet.
+- **⚠️ Gazebo rendering vs bootc-os boost — a real, unresolved blocker (found
+  2026-08-30; INVALIDATES the earlier "simulation 1068 / gazebo 798, no unmet
+  deps" dry-run, which must have run against a different base/repo state):**
+  The Gazebo dep chain is
+  `ros-jazzy-simulation → ros-gz-sim → gz-sim-vendor → gz-rendering-vendor →
+  libOgreMain.so.1.9.0`. The ONLY provider is Fedora's **`ogre-1:1.9.0-52.fc43`**,
+  which is built against **boost 1.83** (`libboost_thread.so.1.83.0` →
+  `boost-system = 1.83`). But bootc-os ships **boost 1.90**, and its
+  `boost-filesystem-1.90` **Obsoletes/Conflicts boost-system < 1.90** — so the
+  old boost 1.83 the rendering stack needs cannot be installed alongside the
+  base's boost 1.90. `gz-sim-vendor` hard-requires `gz-rendering-vendor` even
+  headless, so this blocks BOTH `simulation` and `gazebo`; there is no
+  rendering-free subset. Not fixable by repo config (`--allowerasing` would try
+  to rip boost 1.90 out of the base OS and cascade). Real fixes need one of:
+  (a) tavie rebuilds `gz-rendering-vendor` against a boost-1.90-compatible ogre
+  (e.g. ogre-next) or vendors ogre; (b) a bootc-os base pinned to boost 1.83
+  (unlikely / regressive); (c) build the gz stack ourselves against boost 1.90.
+  ros-core/ros-base are unaffected (they don't touch ogre/boost-thread).
 - **Image size:** measured ros-core = **1.96 GB** (base bootc-os = 909 MB; the
   ROS install layer adds ~1.05 GB). Two structural reasons it dwarfs osrf's
   Ubuntu `ros:jazzy-ros-core` (~0.7 GB):
