@@ -43,9 +43,25 @@ enabled=1
 EOF
 
 # ── tavie/ros2 COPR (FHS ROS 2 RPMs) ──
-# The .repo carries the COPR signing key + gpgcheck=1; we only rewrite the
-# broken $releasever in its baseurl to the real Fedora release.
-curl -fsSL -o /tmp/tavie-ros2.repo \
-  "https://copr.fedorainfracloud.org/coprs/tavie/ros2/repo/fedora-${FED}/tavie-ros2-fedora-${FED}.repo"
-sed "s/\$releasever/${FED}/g" /tmp/tavie-ros2.repo > /etc/yum.repos.d/tavie-ros2.repo
-rm -f /tmp/tavie-ros2.repo
+# We author the .repo directly against the COPR *results backend*
+# (download.copr.fedorainfracloud.org) rather than fetching the frontend's
+# dynamically-generated .repo file. Two reasons:
+#   * the frontend generator (/coprs/<owner>/<proj>/repo/...) is intermittently
+#     down (502 / connection reset) while the results backend stays up — a build
+#     shouldn't hinge on the frontend being healthy;
+#   * the baseurl still needs the real Fedora release, not bootc-os's snapshot
+#     $releasever, so we bake ${FED} in here (same fix as the Fedora repos).
+# This is exactly what the generated .repo points at (backend baseurl + backend
+# pubkey), just written without the network round-trip to the flaky endpoint.
+cat > /etc/yum.repos.d/tavie-ros2.repo <<EOF
+[copr:copr.fedorainfracloud.org:tavie:ros2]
+name=Copr repo for ros2 owned by tavie
+baseurl=https://download.copr.fedorainfracloud.org/results/tavie/ros2/fedora-${FED}-\$basearch/
+type=rpm-md
+skip_if_unavailable=False
+gpgcheck=1
+gpgkey=https://download.copr.fedorainfracloud.org/results/tavie/ros2/pubkey.gpg
+repo_gpgcheck=0
+enabled=1
+enabled_metadata=1
+EOF

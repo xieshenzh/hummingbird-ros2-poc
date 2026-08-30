@@ -9,7 +9,7 @@
 #   FROM ubuntu:noble             FROM quay.io/hummingbird-community/bootc-os
 #   apt + packages.ros.org        dnf + tavie/ros2 COPR (FHS RPMs)
 #   installs under /opt/ros       installs under /usr (FHS, immutable layer)
-#   source /opt/ros/.../setup     source /usr/lib64/ros2-jazzy/setup.bash
+#   source /opt/ros/.../setup     source /usr/lib64/ros-jazzy/setup.bash
 #
 # Because the base is bootc-os, the result is itself a bootable container
 # image: it inherits the kernel, systemd and `/sbin/init` from bootc-os, so it
@@ -50,7 +50,7 @@ RUN dnf -y install \
     && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log
 
 # ── Environment setup ──
-# tavie packages install their setup scripts under /usr/lib64/ros2-${ROS_DISTRO}
+# tavie packages install their setup scripts under /usr/lib64/ros-${ROS_DISTRO}
 # (not /opt/ros as in the Ubuntu reference). Auto-source them for interactive
 # login shells, e.g. `podman run -it ... bash` or an SSH session on a booted
 # robot OS.

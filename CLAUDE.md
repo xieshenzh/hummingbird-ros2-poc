@@ -35,8 +35,15 @@ Dockerfiles (`create_ros_core_image.Dockerfile.em` → ros-core, then ros-base
     exist; verified via `dnf repoquery --whatprovides`.
   - RPMs are built against the base Fedora's **system Python** — do not add a
     second `python3`.
-  - Repo file: `https://copr.fedorainfracloud.org/coprs/tavie/ros2/repo/fedora-$(rpm -E %fedora)/tavie-ros2-fedora-$(rpm -E %fedora).repo`
-    (brings the COPR signing key + `gpgcheck=1`).
+  - Repo file: `enable-repos.sh` now **authors the `.repo` directly** against the
+    COPR results backend (`download.copr.fedorainfracloud.org/results/tavie/ros2/
+    fedora-$FED-$basearch/`, gpgkey `.../results/tavie/ros2/pubkey.gpg`) instead
+    of `curl`-ing the frontend generator
+    (`copr.fedorainfracloud.org/coprs/tavie/ros2/repo/...`). Reason (hit during
+    the first real build, 2026-08-29): the frontend generator was returning
+    **502 / connection-reset** while the results backend stayed **200** — the
+    generated file just points at that backend anyway, so we skip the flaky
+    round-trip. Release still pinned to `rpm -E %fedora`, not `$releasever`.
 
 - **Two bootc-os quirks break the COPR install — both handled by
   `enable-repos.sh` (verified 2026-08-28):**
@@ -114,9 +121,12 @@ podman build -t hummingbird-ros2-poc/gazebo:latest     images/gazebo
 
 ## Test plan (this is what to run/verify here)
 
-1. **Build succeeds.** The repo/dep issues that used to block this are handled
-   by `enable-repos.sh` (Fedora repos + release-pinned COPR). If the tavie repo
-   fetch is ever blocked (COPR bot protection), swap it for
+1. **Build succeeds.** ✅ **ros-core built & tested 2026-08-29** (amd64 emulation
+   on an arm64 host): `podman build --platform linux/amd64 -t
+   hummingbird-ros2-poc/ros-core:latest images/ros-core` → 377 pkgs, GPG-verified,
+   **1.96 GB**. The repo/dep issues that used to block this are handled by
+   `enable-repos.sh` (Fedora repos + backend-pinned COPR, see Established facts).
+   If the tavie backend is ever unreachable, fall back to
    `dnf -y copr enable tavie/ros2` (may require `dnf5-plugins`).
 2. **Packages resolve.** Already verified via `--assumeno` dry-run on
    fedora-43 x86_64 (ros-core 373, ros-base 558, simulation 1068, gazebo 798
@@ -144,20 +154,53 @@ podman build -t hummingbird-ros2-poc/gazebo:latest     images/gazebo
    #   ros2 topic list   # should work without manual sourcing
    ```
 5. **Smoke test pub/sub** (talker/listener) using `demo_nodes_cpp` if pulled in,
-   or `ros2 topic pub` + `ros2 topic echo`.
-6. **(Stretch) bootability:** convert ros-base to a qcow2 with
-   `quay.io/centos-bootc/bootc-image-builder` and boot it; confirm ROS sources
-   in an SSH login shell.
+   or `ros2 topic pub` + `ros2 topic echo`. ✅ **verified on ros-core 2026-08-29**
+   — but only with **Cyclone DDS**:
+   ```bash
+   podman run --rm --platform linux/amd64 \
+     -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+     --entrypoint /usr/bin/ros-entrypoint.sh \
+     hummingbird-ros2-poc/ros-core:latest bash -c \
+     'ros2 topic pub -r5 /chatter std_msgs/msg/String "{data: hi}" & \
+      sleep 6; ros2 topic echo --once /chatter std_msgs/msg/String'
+   ```
+   ⚠️ **DDS-under-qemu caveat:** the *default* Fast DDS (`rmw_fastrtps_cpp`)
+   pub/sub does NOT work under amd64-on-arm64 emulation — the topic is never
+   discovered (its shared-memory transport fails under qemu). This is an
+   **emulation artifact**, not an image bug; Fast DDS should work on a native
+   x86_64 host. Both middlewares are packaged. Re-test the default on real
+   x86_64 hardware before assuming it's fine there.
+6. **(Stretch) bootability:** ✅ **ros-core confirmed bootc-valid 2026-08-29** —
+   it keeps `CMD ["/sbin/init"]`, `LABEL containers.bootc=1`, a kernel
+   (`/usr/lib/modules/*/vmlinuz`) and the `bootc` binary from the base;
+   `bootc container lint` passes 11 checks (2 cosmetic warnings: leftover
+   `/run/dnf` and a `/var/lib/dnf` tmpfiles entry — harmless, tidy the Dockerfile
+   cleanup if desired). To actually boot it, convert to a qcow2 with
+   `quay.io/centos-bootc/bootc-image-builder` and confirm ROS sources in an SSH
+   login shell (not yet done).
 
 ## Open questions / risks
 
 - **Dep resolution CONFIRMED** for ros-core/ros-base/simulation/gazebo on
   fedora-43 x86_64 (dry-run). Still need a full `podman build` + runtime smoke
   test (the dry-run doesn't download/GPG-verify or run anything).
-- **Image size:** simulation resolves to 1068 pkgs and gazebo to 798 — both huge
-  on top of an already-full OS image. Measure built size; this likely motivates
-  a slimmer non-bootc variant, or keeping gazebo/simulation off the bootable
-  images.
+- **Image size:** measured ros-core = **1.96 GB** (base bootc-os = 909 MB; the
+  ROS install layer adds ~1.05 GB). Two structural reasons it dwarfs osrf's
+  Ubuntu `ros:jazzy-ros-core` (~0.7 GB):
+  1. **The base is a full bootable OS, not a minimal userland.** bootc-os ships a
+     kernel (`kernel-core`+`kernel-modules` ≈ 273 MB), systemd, dnf, *and*
+     container tooling (podman 49 MB, containernetworking-plugins 71 MB, skopeo
+     26 MB, bootc). osrf is `FROM ubuntu:noble` (~78 MB, no kernel, no init).
+  2. **The tavie RPMs pull a full C/C++ build toolchain into ros-core** that the
+     Ubuntu runtime image omits: `boost-devel` 143 MB, `gcc` 122 MB, `cpp` 43 MB,
+     `libstdc++-devel` 41 MB, `cmake` 40 MB, `binutils` 28 MB, plus `git-core`,
+     `python3-pytest`, etc. On Ubuntu these live in the *dev*/`ros-base` image,
+     not runtime `ros-core`. The Fedora ROS RPMs `Require:` the `-devel` packages
+     directly, so they land even in ros-core.
+  simulation (1068 pkgs) and gazebo (798 pkgs) will be far larger still. This
+  motivates either a slimmer non-bootc variant, keeping gazebo/simulation off the
+  bootable images, or (if tavie's packaging allows) excluding the `-devel`
+  Requires from the runtime image.
 - **Gazebo rendering:** gz-sim's GUI/sensors need OpenGL/GPU (ogre-next). Headless
   server (`gz sim -s`) should work in a container; the GUI needs GPU/display
   passthrough. Verify what the POC actually requires.
