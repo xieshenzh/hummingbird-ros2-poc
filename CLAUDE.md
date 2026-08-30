@@ -95,7 +95,35 @@ images/gazebo/Dockerfile          FROM bootc-os; standalone Gazebo Harmonic (gz-
 images/gazebo/enable-repos.sh     copy of ros-core's (separate build context; keep in sync)
 images/gazebo/gz-entrypoint.sh    sources setup.bash (puts vendored `gz` on PATH) then exec "$@"
 images/gazebo/gz-profile.sh       /etc/profile.d hook for interactive bash login shells
+images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz stack into an isolated /sysroot, then COPY into bootc-os at /usr/lib/ros-sysroot (VARIANT=bridge|simulation|gazebo)
+images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
+images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
 ```
+
+### sim-bundle: the multi-stage workaround (isolated sysroot)
+
+Sidesteps the boost-1.83-vs-1.90 and multi-stream-ruby conflicts (see Open
+questions) by installing the Gazebo stack on **stock fedora:43** — where the
+tavie RPMs resolve cleanly — into an isolated root, then copying that root into
+bootc-os at `/usr/lib/ros-sysroot` and running it via `chroot`. The bundled
+boost/ruby/ogre live entirely inside the sysroot and never merge with the base
+`/usr`, so nothing conflicts; the outer image stays a bootable bootc image.
+
+- **`bridge` variant ✅ built & tested 2026-08-30** (amd64 emulation): 2.17 GB,
+  569 pkgs resolved on fedora:43. `ros2 pkg list` shows `ros_gz_bridge`/
+  `ros_gz_image`/`ros_gz_interfaces`; `parameter_bridge` ELF loads with ALL libs
+  resolved (`ldd` clean). Add `ros-<distro>-ros2cli-common-extensions` for the
+  `ros2 pkg`/`run`/... sub-commands (bare `ros2cli` has none).
+- **Activation needs `--cap-add=sys_admin`** (chroot bind-mounts /proc,/dev,/sys):
+  ```bash
+  podman run --rm --platform linux/amd64 --cap-add=sys_admin \
+    --entrypoint /usr/bin/sim-entrypoint.sh \
+    hummingbird-ros2-poc/sim-bundle:bridge ros2 pkg list
+  ```
+  chroot (not bwrap): the podman-machine VM blocks nested user namespaces
+  (bwrap EINVAL); on a booted bootc host running as root the mounts just work.
+- **`simulation` variant: not yet built** (next step — same Dockerfile,
+  `--build-arg VARIANT=simulation`). `gazebo` variant is defined but untested.
 
 Architecture: `simulation` is a ROS image (the osrf variant incl. the ros_gz
 bridge, `FROM ros-base`); `gazebo` is a separate simulator image (`FROM
