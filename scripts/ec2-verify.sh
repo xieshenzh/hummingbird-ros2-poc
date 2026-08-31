@@ -119,6 +119,14 @@ simr "$PREFIX/sim-bundle:gazebo" gz sim --version 2>&1 | grep -q "Gazebo Sim" \
 simr "$PREFIX/sim-bundle:gazebo" bash -c 'command -v ros2 >/dev/null 2>&1' \
   && bad "ros2 unexpectedly present (should be ROS-free)" || pass "ros2 absent (ROS-free, correct)"
 
+# ── two-container ROS 2 <-> Gazebo integration (the qemu-blocked one) ─────────
+hr "integration (two containers: gazebo -> bridge -> ros2)"
+if ./scripts/integration-rosgz.sh; then
+  pass "cross-container ros_gz bridge relayed a Gazebo message to ROS 2"
+else
+  soft "cross-container integration (native x86_64 should pass; see output above)"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 hr "SUMMARY"
 $PODMAN images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep "$PREFIX" | sort

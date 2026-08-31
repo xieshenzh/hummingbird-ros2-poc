@@ -98,7 +98,8 @@ images/gazebo/gz-profile.sh       /etc/profile.d hook for interactive bash login
 images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz stack into an isolated /sysroot, then COPY into bootc-os at /usr/lib/ros-sysroot (VARIANT=bridge|simulation|gazebo)
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
-scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim checks)
+scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
+scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
 ```
 
 ### sim-bundle: the multi-stage workaround (isolated sysroot)
@@ -226,10 +227,30 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
 - **Native x86_64 (EC2) — PENDING.** Run **`scripts/ec2-verify.sh`** on a fresh
   x86_64 Linux instance (Fedora 43 / AL2023 / Ubuntu + `podman git`). It
   rebuilds all five natively (no `--platform`) and runs the full suite,
-  including the checks qemu can't do: **default Fast DDS pub/sub** and
-  **headless `gz sim -s` physics stepping**. A plain compute instance
-  (`c6i`/`m6i`) suffices for headless; GUI (`gz sim -g`) needs a display + GPU
-  (`g4dn`/`g5`) and is deferred (see "Interactive GUI" above).
+  including the checks qemu can't do: **default Fast DDS pub/sub**,
+  **headless `gz sim -s` physics stepping**, and the **two-container
+  ROS 2 ↔ Gazebo integration** (`scripts/integration-rosgz.sh`). A plain compute
+  instance (`c6i`/`m6i`) suffices for headless; GUI (`gz sim -g`) needs a
+  display + GPU (`g4dn`/`g5`) and is deferred (see "Interactive GUI" above).
+- **Two-container integration (`scripts/integration-rosgz.sh`) — CANNOT run on
+  this laptop; native x86_64 only.** Creates a podman **pod** (shared net ns) with
+  a `sim-bundle:gazebo` container publishing on the gz side and a
+  `sim-bundle:bridge` container running `ros_gz parameter_bridge` + `ros2 topic
+  echo`, and asserts the message crosses gz-transport → bridge → DDS. It is wired
+  into `ec2-verify.sh` as the final (soft) check.
+  - ⚠️ **Why not on the laptop: gz-transport aborts under amd64-on-arm64
+    qemu-user.** EVERY gz-transport operation (`gz sim -s`, `gz topic -l/-p/-e`,
+    `parameter_bridge`) reproducibly crashes: `Error setting socket option
+    (IP_MULTICAST_IF)` → `[<ip>] seems an invalid local IP address` →
+    `std::out_of_range: vector::_M_range_check (0 >= 0)` → `qemu: uncaught target
+    signal 6 (Aborted)`. NOT fixed by `GZ_IP=127.0.0.1`, `--net=host`, or a pod.
+    There is no gz-transport equivalent of `ROS_LOCALHOST_ONLY` to force unicast.
+    The failure is in gz-transport's **multicast socket setup** under qemu — NOT
+    getifaddrs (a ctypes probe confirmed `getifaddrs` works under qemu: rc=0, 6
+    valid entries for lo/eth0; an earlier "empty getifaddrs" hypothesis was
+    DISPROVEN). The ROS-only side works here (cyclonedds + `ROS_LOCALHOST_ONLY=1`);
+    only the Gazebo/gz-transport leg is blocked. Emulation artifact, not an image
+    bug — must be validated on native x86_64.
 
 ## Test plan (this is what to run/verify here)
 
