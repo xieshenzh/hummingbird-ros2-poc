@@ -2,8 +2,12 @@
 
 What still stands in the way of producing clean ROS 2 (`ros-core`, `ros-base`)
 and Gazebo images on the Hummingbird `bootc-os` base. Grouped by category.
-Verification-pending items (GUI, native-hardware validation) are tracked
-separately and omitted here — they are being tested next.
+
+Native-hardware validation is **done**: on 2026-08-31 all five images built and
+the full suite passed on a native x86_64 EC2 instance — including default Fast
+DDS, headless `gz sim -s`, and the two-container ROS 2 ↔ Gazebo integration (see
+CLAUDE.md "Verification status"). The interactive **GUI** (`gz sim -g`, needs a
+display + GPU) remains the one verification-pending item and is omitted here.
 
 ## Packaging & upstream dependency
 

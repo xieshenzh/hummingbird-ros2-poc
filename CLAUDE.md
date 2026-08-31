@@ -224,16 +224,30 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
   - **DDS-in-container note:** cyclonedds pub/sub needs `ROS_LOCALHOST_ONLY=1`
     to discover under qemu (multicast is flaky in the podman-machine VM);
     loopback works. Default Fast DDS still doesn't discover under qemu.
-- **Native x86_64 (EC2) — PENDING.** Run **`scripts/ec2-verify.sh`** on a fresh
-  x86_64 Linux instance (Fedora 43 / AL2023 / Ubuntu + `podman git`). It
-  rebuilds all five natively (no `--platform`) and runs the full suite,
-  including the checks qemu can't do: **default Fast DDS pub/sub**,
-  **headless `gz sim -s` physics stepping**, and the **two-container
-  ROS 2 ↔ Gazebo integration** (`scripts/integration-rosgz.sh`). A plain compute
-  instance (`c6i`/`m6i`) suffices for headless; GUI (`gz sim -g`) needs a
-  display + GPU (`g4dn`/`g5`) and is deferred (see "Interactive GUI" above).
-- **Two-container integration (`scripts/integration-rosgz.sh`) — CANNOT run on
-  this laptop; native x86_64 only.** Creates a podman **pod** (shared net ns) with
+- **Native x86_64 (EC2) — ✅ DONE 2026-08-31. ALL CHECKS PASSED.** Ran
+  **`scripts/ec2-verify.sh`** on an AL2023 `c6i.2xlarge` (8 vCPU / 15 GB / 80 GB
+  gp3), rootful **podman 5.6.1**. Rebuilt all five natively (no `--platform`) and
+  every check passed — crucially the three that CANNOT run under qemu:
+  - **default Fast DDS pub/sub ✅** (the qemu shared-memory-transport failure was
+    emulation-only).
+  - **headless `gz sim -s` physics stepping (200 iters) ✅** (the abort was an
+    emulation artifact, NOT an image bug).
+  - **two-container ROS 2 ↔ Gazebo integration ✅** (`scripts/integration-rosgz.sh`)
+    — a Gazebo-container message crossed gz-transport → parameter_bridge → DDS →
+    `ros2 topic echo`, confirming the gz-transport multicast crash was purely
+    qemu-user.
+  Also green: ros-core (ros2 CLI, Cyclone DDS, `bootc container lint`), ros-base
+  (tf2/tf2_ros/robot_state_publisher/geometry_msgs/rosbag2), bridge (ros_gz pkgs +
+  `ldd`-clean parameter_bridge), simulation & gazebo (`gz sim --version`, gazebo
+  ROS-free). Sizes: ros-core 1.96, bridge 2.19, gazebo 4.5, simulation 4.83 GB.
+  - NOTE: this AL2023 "kernel-6.18" AMI shipped `docker`/`buildah` but NOT
+    `podman` in its repo snapshot — podman was installed manually before the run.
+  - To reproduce: fresh x86_64 instance (Fedora / AL2023 / Ubuntu) + `podman`,
+    then `./scripts/ec2-verify.sh`. GUI (`gz sim -g`) still needs a display + GPU
+    (`g4dn`/`g5`) and remains deferred (see "Interactive GUI" above).
+- **Two-container integration (`scripts/integration-rosgz.sh`) — ✅ PASSED on
+  native x86_64 (EC2) 2026-08-31; cannot run on this laptop.** Creates a podman
+  **pod** (shared net ns) with
   a `sim-bundle:gazebo` container publishing on the gz side and a
   `sim-bundle:bridge` container running `ros_gz parameter_bridge` + `ros2 topic
   echo`, and asserts the message crosses gz-transport → bridge → DDS. It is wired
