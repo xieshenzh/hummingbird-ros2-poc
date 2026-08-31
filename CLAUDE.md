@@ -137,8 +137,14 @@ boost/ruby/ogre live entirely inside the sysroot and never merge with the base
     → `qemu: uncaught target signal 6`, core dumped) — same amd64-on-arm64
     emulation artifact as Fast DDS / parameter_bridge. Re-test full sim
     execution on **native x86_64** before assuming a runtime bug.
-- **`gazebo` sim-bundle variant**: defined (`--build-arg VARIANT=gazebo`,
-  gz-sim-vendor + gz-tools-vendor, no ROS middleware) but not yet built.
+- **`gazebo` sim-bundle variant ✅ built & tested 2026-08-30** (amd64 emulation):
+  `--build-arg VARIANT=gazebo` — standalone Gazebo Harmonic (gz-sim-vendor +
+  gz-tools-vendor, **no** ROS middleware). `gz sim --version` → Gazebo Sim
+  8.11.0; the `gz` CLI resolves to
+  `/usr/lib64/ros-jazzy/opt/gz_tools_vendor/bin/gz`; gz-sim plugin `.so`s are
+  `ldd`-clean. Same qemu headless-server caveat as the simulation variant.
+- **sim-bundle image sizes** (amd64): bridge 2.19 GB, gazebo 4.5 GB,
+  simulation 4.83 GB (base bootc-os 909 MB + the copied sysroot).
 
 Architecture: `simulation` is a ROS image (the osrf variant incl. the ros_gz
 bridge, `FROM ros-base`); `gazebo` is a separate simulator image (`FROM
