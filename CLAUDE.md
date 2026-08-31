@@ -122,8 +122,23 @@ boost/ruby/ogre live entirely inside the sysroot and never merge with the base
   ```
   chroot (not bwrap): the podman-machine VM blocks nested user namespaces
   (bwrap EINVAL); on a booted bootc host running as root the mounts just work.
-- **`simulation` variant: not yet built** (next step — same Dockerfile,
-  `--build-arg VARIANT=simulation`). `gazebo` variant is defined but untested.
+- **`simulation` variant ✅ built & tested 2026-08-30** (amd64 emulation):
+  `--build-arg VARIANT=simulation`. Installs the full osrf `simulation` set —
+  `ros_gz_bridge`/`_image`/`_interfaces`/`_sim` plus the whole gz vendor stack
+  (`gz_sim_vendor`, `gz_rendering_vendor`, `gz_ogre_next_vendor`,
+  `gz_physics_vendor`, `gz_dartsim_vendor`, ... — 16 gz_* vendor pkgs). The
+  boost-1.83/ogre/ruby stack that blocks a native bootc-os install resolves
+  cleanly in the isolated fedora:43 sysroot. Verified:
+  - `gz sim --version` → **Gazebo Sim 8.11.0** (Harmonic); the ruby `gz` CLI runs.
+  - `ros2 pkg list` lists all ros_gz + gz_*_vendor packages.
+  - `ldd` clean on `ros_gz_sim/create` and `ros_gz_bridge/parameter_bridge`
+    (ALL LIBS RESOLVED).
+  - ⚠️ **Headless `gz sim -s` server aborts under qemu** (`std::__throw_out_of_range`
+    → `qemu: uncaught target signal 6`, core dumped) — same amd64-on-arm64
+    emulation artifact as Fast DDS / parameter_bridge. Re-test full sim
+    execution on **native x86_64** before assuming a runtime bug.
+- **`gazebo` sim-bundle variant**: defined (`--build-arg VARIANT=gazebo`,
+  gz-sim-vendor + gz-tools-vendor, no ROS middleware) but not yet built.
 
 Architecture: `simulation` is a ROS image (the osrf variant incl. the ros_gz
 bridge, `FROM ros-base`); `gazebo` is a separate simulator image (`FROM
