@@ -146,6 +146,49 @@ boost/ruby/ogre live entirely inside the sysroot and never merge with the base
 - **sim-bundle image sizes** (amd64): bridge 2.19 GB, gazebo 4.5 GB,
   simulation 4.83 GB (base bootc-os 909 MB + the copied sysroot).
 
+### Interactive GUI (gz sim -g) — supported, runtime-only concern (2026-08-30)
+
+The **GUI stack is already fully bundled** in the `gazebo` and `simulation`
+variants — no extra build/packaging needed. Verified present in the sysroot:
+`gz_gui_vendor` (gz-gui-8 + its plugins: MinimalScene, Grid3D, Camera*, ...),
+`gz_ogre_next_vendor`, `gz_rendering_vendor`, Qt5 xcb platform plugin
+(`/usr/lib64/qt5/plugins/platforms/libqxcb.so`), `libGL`/`libEGL`, and a
+COMPLETE Mesa (`/usr/lib64/dri`: hardware drivers `iris`/`radeonsi`/`nouveau`/
+`virtio_gpu` **and** software `swrast_dri.so`/`kms_swrast_dri.so`/`zink_dri.so`).
+`gz sim -g` ("Run only the GUI") is a supported mode.
+
+So a GUI Gazebo on bootc-os is entirely feasible — the base image is NOT the
+blocker. The only requirements are **runtime display + GPU access**:
+- `sim-entrypoint.sh` now binds the host X11 socket (`/tmp/.X11-unix`) and an
+  `XAUTHORITY` file into the chroot; `DISPLAY`/`XAUTHORITY`/`LIBGL_ALWAYS_SOFTWARE`
+  pass through chroot as env. Headless behaviour is unchanged.
+- Run recipe (X11 host + GPU):
+  ```bash
+  xhost +local:
+  podman run --rm --platform linux/amd64 --cap-add=sys_admin \
+    --net=host --device /dev/dri -e DISPLAY -e XAUTHORITY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    --entrypoint /usr/bin/sim-entrypoint.sh \
+    hummingbird-ros2-poc/sim-bundle:gazebo gz sim -g
+  ```
+  Software-GL fallback (no GPU): drop `--device /dev/dri`, add
+  `-e LIBGL_ALWAYS_SOFTWARE=1` (Mesa swrast/zink are bundled — works, slow).
+- ⚠️ **GUI is x86_64-native only** — it will NOT run under amd64-on-arm64 qemu
+  (no GPU passthrough; software GL under qemu is unusable and crashes like the
+  headless physics engine did). Must be tested on a native x86_64 host with a
+  display, or on a booted bootc machine with its own compositor/GPU. NOT YET
+  tested — no native x86_64 host available in this POC.
+
+Two deployment shapes for GUI use:
+  (a) **Container GUI** on an x86_64 Linux workstation — the run recipe above
+      (mirrors upstream `gazebosim/gz-sim` `Dockerfile.gz`, which is itself a
+      GPU/GUI workstation image `FROM nvidia/opengl`).
+  (b) **Booted bootc robot/workstation** — the image boots (inherits
+      `/sbin/init`) and runs `gz sim -g` on the machine's own display/GPU via a
+      compositor; the cleanest fit for GPU (no container display gymnastics),
+      and the one bootc is actually designed for. Would need a compositor
+      (Weston/GNOME) layered onto the base — a follow-up.
+
 Architecture: `simulation` is a ROS image (the osrf variant incl. the ros_gz
 bridge, `FROM ros-base`); `gazebo` is a separate simulator image (`FROM
 bootc-os`, no rclcpp/ros-core). Run them together (same pod / shared network) to
@@ -293,3 +336,31 @@ Reference upstream: `osrf/docker_images` (generated Dockerfiles) and
 `osrf/docker_templates` (the `.em` empy templates). ROS 2 base metapackages are
 defined in `ros2/variants` (`ros_core`, `ros_base` `package.xml`) and turned
 into packages via bloom — the Dockerfiles only reference the metapackage name.
+
+### Upstream reference Dockerfiles — where each variant actually lives (verified 2026-08-30)
+
+- **ROS 2 variants** (`osrf/docker_images`, path
+  `ros/jazzy/ubuntu/noble/<variant>/Dockerfile`): SIX variants are *defined* —
+  `ros-core`, `ros-base`, `perception`, `simulation`, `desktop`, `desktop-full`
+  (= REP 2001). But the **official Docker Library (`library/ros`) only publishes
+  `ros-core`, `ros-base`, `perception`** as pullable tags. `simulation`/`desktop`/
+  `desktop-full` are defined + buildable-from-source but NOT published (GUI/size).
+  So "the upstream simulation variant" = the *Dockerfile* + the `ros-jazzy-simulation`
+  metapackage, there is NO `ros:jazzy-simulation` tag to pull. Our sim-bundle
+  `simulation` reproduces that Dockerfile (`FROM ros-base` + `ros-jazzy-simulation`);
+  it contains the Gazebo runtime because the metapackage deps (`ros_gz` → the sim)
+  pull it — same as upstream.
+- **Gazebo Classic (v4–11)**: `osrf/docker_images` under `gazebo/<ver>/...`
+  (Ubuntu/Debian, apt from `packages.osrfoundation.org`). Entrypoint convention:
+  `source setup.sh; exec "$@"`, `ENTRYPOINT ["/gzserver_entrypoint.sh"]`,
+  `CMD ["gzserver"]`, `EXPOSE 11345` (Classic master port — N/A to modern gz,
+  which uses gz-transport UDP multicast discovery).
+- **Modern Gazebo (gz-sim, Harmonic)**: NOT in `osrf/docker_images`. Lives in
+  **`gazebosim/gz-sim/docker/`** — `Dockerfile.base`, `Dockerfile.gz` (main),
+  `Dockerfile.nightly`. `Dockerfile.gz` is a **GPU/GUI workstation** image:
+  `FROM nvidia/opengl:1.2-glvnd-devel-ubuntu20.04`, apt-installs `${gz_distribution}`
+  from the OSRF repo, creates a non-root `developer` user + sudo, `ENTRYPOINT
+  ["gz sim"]`. It sets NO `GZ_*`/`GAZEBO_*` env (relies on the install's default
+  paths). It is explicitly GPU-oriented — not a minimal/bootable server image.
+  (`gazebo-tooling/release-tools/bloom/ros_gz/Dockerfile` covers ros_gz bridge
+  packaging.)

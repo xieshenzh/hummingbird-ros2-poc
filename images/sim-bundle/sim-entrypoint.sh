@@ -25,12 +25,36 @@ SYSROOT="${ROS_SYSROOT:-/usr/lib/ros-sysroot}"
 
 # Bind the kernel filesystems into the sysroot. rbind /proc because a fresh proc
 # mount is rejected read-only inside the container; rbind /dev and /sys so DDS
-# shared memory, /dev/null, GPUs, etc. are visible.
+# shared memory, /dev/null, GPUs (/dev/dri), etc. are visible.
 for fs in proc dev sys; do
     mountpoint -q "$SYSROOT/$fs" 2>/dev/null || mount --rbind "/$fs" "$SYSROOT/$fs"
 done
 # Carry DNS in for networked simulation.
 cp -f /etc/resolv.conf "$SYSROOT/etc/resolv.conf" 2>/dev/null || true
+
+# GUI support (gz sim -g / rviz): make the host display reachable inside the
+# chroot. The sysroot has its own /tmp, so the X11 socket must be bound in.
+# Provide a display at run time, e.g. (X11, host GPU):
+#   xhost +local:
+#   podman run --rm --platform linux/amd64 --cap-add=sys_admin \
+#     --net=host --device /dev/dri -e DISPLAY -e XAUTHORITY \
+#     -v /tmp/.X11-unix:/tmp/.X11-unix \
+#     --entrypoint /usr/bin/sim-entrypoint.sh \
+#     hummingbird-ros2-poc/sim-bundle:gazebo gz sim -g
+# (drop --device /dev/dri and add -e LIBGL_ALWAYS_SOFTWARE=1 for software GL.)
+# GUI is x86_64-native only: it will NOT work under amd64-on-arm64 qemu.
+if [ -d /tmp/.X11-unix ]; then
+    mkdir -p "$SYSROOT/tmp/.X11-unix"
+    mountpoint -q "$SYSROOT/tmp/.X11-unix" 2>/dev/null || \
+        mount --rbind /tmp/.X11-unix "$SYSROOT/tmp/.X11-unix"
+fi
+# Bind an X authority file through, if one is set and exists.
+if [ -n "${XAUTHORITY:-}" ] && [ -f "$XAUTHORITY" ]; then
+    mkdir -p "$SYSROOT$(dirname "$XAUTHORITY")"
+    touch "$SYSROOT$XAUTHORITY"
+    mountpoint -q "$SYSROOT$XAUTHORITY" 2>/dev/null || \
+        mount --bind "$XAUTHORITY" "$SYSROOT$XAUTHORITY"
+fi
 
 # ROS_DISTRO / LANG / LC_ALL are image ENV and are inherited across chroot.
 exec chroot "$SYSROOT" /bin/bash -c \
