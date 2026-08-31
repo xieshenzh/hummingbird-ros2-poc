@@ -97,7 +97,8 @@ images/gazebo/gz-entrypoint.sh    sources setup.bash (puts vendored `gz` on PATH
 images/gazebo/gz-profile.sh       /etc/profile.d hook for interactive bash login shells
 images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz stack into an isolated /sysroot, then COPY into bootc-os at /usr/lib/ros-sysroot (VARIANT=bridge|simulation|gazebo)
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
-images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
+images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
+scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim checks)
 ```
 
 ### sim-bundle: the multi-stage workaround (isolated sysroot)
@@ -207,9 +208,28 @@ All images are **x86_64-only** (tavie has no aarch64 build). On an arm64 host
 ```bash
 podman build -t hummingbird-ros2-poc/ros-core:latest images/ros-core
 podman build -t hummingbird-ros2-poc/ros-base:latest images/ros-base
-podman build -t hummingbird-ros2-poc/simulation:latest images/simulation
-podman build -t hummingbird-ros2-poc/gazebo:latest     images/gazebo
+# native simulation/gazebo are BLOCKED (boost skew) — use sim-bundle instead:
+podman build --build-arg VARIANT=bridge     -t hummingbird-ros2-poc/sim-bundle:bridge     images/sim-bundle
+podman build --build-arg VARIANT=simulation -t hummingbird-ros2-poc/sim-bundle:simulation images/sim-bundle
+podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:gazebo     images/sim-bundle
 ```
+
+## Verification status & how to test
+
+- **Local (this laptop, arm64 + amd64 qemu) — DONE 2026-08-30.** All five
+  buildable images build and pass everything testable under emulation:
+  ros-core (`ros2` + pub/sub), ros-base (tf2/rosbag2/...), sim-bundle
+  bridge/simulation/gazebo (`gz sim --version`, `ros_gz` pkgs, `ldd`-clean).
+  - **DDS-in-container note:** cyclonedds pub/sub needs `ROS_LOCALHOST_ONLY=1`
+    to discover under qemu (multicast is flaky in the podman-machine VM);
+    loopback works. Default Fast DDS still doesn't discover under qemu.
+- **Native x86_64 (EC2) — PENDING.** Run **`scripts/ec2-verify.sh`** on a fresh
+  x86_64 Linux instance (Fedora 43 / AL2023 / Ubuntu + `podman git`). It
+  rebuilds all five natively (no `--platform`) and runs the full suite,
+  including the checks qemu can't do: **default Fast DDS pub/sub** and
+  **headless `gz sim -s` physics stepping**. A plain compute instance
+  (`c6i`/`m6i`) suffices for headless; GUI (`gz sim -g`) needs a display + GPU
+  (`g4dn`/`g5`) and is deferred (see "Interactive GUI" above).
 
 ## Test plan (this is what to run/verify here)
 
