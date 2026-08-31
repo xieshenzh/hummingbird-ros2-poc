@@ -99,7 +99,8 @@ images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
-scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
+scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo `gz topic` publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
+scripts/integration-rosgz-sim.sh  same, but with a REAL running `gz sim -s -r` world bridging /clock (sim time) into ROS 2; native x86_64 only
 ```
 
 ### sim-bundle: the multi-stage workaround (isolated sysroot)
@@ -235,7 +236,10 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
   - **two-container ROS 2 ↔ Gazebo integration ✅** (`scripts/integration-rosgz.sh`)
     — a Gazebo-container message crossed gz-transport → parameter_bridge → DDS →
     `ros2 topic echo`, confirming the gz-transport multicast crash was purely
-    qemu-user.
+    qemu-user. Also verified with a **real running simulator**
+    (`scripts/integration-rosgz-sim.sh`): a live `gz sim -s -r` world published
+    `/clock`, the bridge relayed it (gz.msgs.Clock → rosgraph_msgs/msg/Clock),
+    and `ros2 topic echo` printed advancing simulation time (`sec: 18`).
   Also green: ros-core (ros2 CLI, Cyclone DDS, `bootc container lint`), ros-base
   (tf2/tf2_ros/robot_state_publisher/geometry_msgs/rosbag2), bridge (ros_gz pkgs +
   `ldd`-clean parameter_bridge), simulation & gazebo (`gz sim --version`, gazebo
