@@ -101,6 +101,7 @@ images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/s
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
 scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo `gz topic` publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
 scripts/integration-rosgz-sim.sh  same, but with a REAL running `gz sim -s -r` world bridging /clock (sim time) into ROS 2; native x86_64 only
+scripts/integration-ros2gz.sh     REVERSE direction (ROS 2 -> Gazebo): ros2 pub -> bridge (`] `) -> gz-transport subscriber; native x86_64 only
 ```
 
 ### sim-bundle: the multi-stage workaround (isolated sysroot)
@@ -239,7 +240,11 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
     qemu-user. Also verified with a **real running simulator**
     (`scripts/integration-rosgz-sim.sh`): a live `gz sim -s -r` world published
     `/clock`, the bridge relayed it (gz.msgs.Clock → rosgraph_msgs/msg/Clock),
-    and `ros2 topic echo` printed advancing simulation time (`sec: 18`).
+    and `ros2 topic echo` printed advancing simulation time (`sec: 18`). The
+    **reverse direction (ROS 2 → Gazebo)** is also verified
+    (`scripts/integration-ros2gz.sh`, the bridge's `] ` mode): a ROS 2 publisher
+    reached a gz-transport subscriber in the Gazebo container — the bridge is
+    confirmed **bidirectional** (this is the ROS `/cmd_vel` → sim actuation path).
   Also green: ros-core (ros2 CLI, Cyclone DDS, `bootc container lint`), ros-base
   (tf2/tf2_ros/robot_state_publisher/geometry_msgs/rosbag2), bridge (ros_gz pkgs +
   `ldd`-clean parameter_bridge), simulation & gazebo (`gz sim --version`, gazebo
