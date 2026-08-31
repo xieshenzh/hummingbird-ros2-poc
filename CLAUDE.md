@@ -97,7 +97,7 @@ images/gazebo/gz-entrypoint.sh    sources setup.bash (puts vendored `gz` on PATH
 images/gazebo/gz-profile.sh       /etc/profile.d hook for interactive bash login shells
 images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz stack into an isolated /sysroot, then COPY into bootc-os at /usr/lib/ros-sysroot (VARIANT=bridge|simulation|gazebo)
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
-images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash then exec "$@"; needs --cap-add=sys_admin
+images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash + set GZ_SIM_SYSTEM_PLUGIN_PATH & GZ_SIM_PHYSICS_ENGINE_PATH (else no plugins/physics load — see below) then exec "$@"; needs --cap-add=sys_admin
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
 scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo `gz topic` publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
 scripts/integration-rosgz-sim.sh  same, but with a REAL running `gz sim -s -r` world bridging /clock (sim time) into ROS 2; native x86_64 only
@@ -232,8 +232,21 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
   every check passed — crucially the three that CANNOT run under qemu:
   - **default Fast DDS pub/sub ✅** (the qemu shared-memory-transport failure was
     emulation-only).
-  - **headless `gz sim -s` physics stepping (200 iters) ✅** (the abort was an
-    emulation artifact, NOT an image bug).
+  - **headless `gz sim -s` physics ✅ — and a real gap found + fixed here.** The
+    server runs natively (the qemu abort was emulation-only). BUT the raw logs
+    exposed that it started WITHOUT physics: `Failed to load system plugin
+    [gz-sim-physics-system]` then `Failed to find plugin [gz-physics-dartsim-plugin]
+    ... GZ_SIM_PHYSICS_ENGINE_PATH`. Root cause: the vendored `setup.bash` sets
+    only `GZ_CONFIG_PATH`, not `GZ_SIM_SYSTEM_PLUGIN_PATH` /
+    `GZ_SIM_PHYSICS_ENGINE_PATH`, so no system plugin and no physics engine
+    loaded — yet `/clock` still advanced and the process exited 0, so a bare
+    rc/iteration check (the old ec2-verify check) passed anyway. **Fix:**
+    `sim-entrypoint.sh` now globs the sysroot for
+    `gz_sim_vendor/lib64/gz-sim-*/plugins` and
+    `gz_physics_vendor/lib64/gz-physics-*/engine-plugins` and exports both paths.
+    Re-verified from the image alone (no `-e` overrides): a free body falls under
+    gravity — Z drops from 10 to ≈-65 in ~3 s, and the sim log is error-free.
+    `ec2-verify.sh` now asserts this (min Z < 9) instead of just rc=0.
   - **two-container ROS 2 ↔ Gazebo integration ✅** (`scripts/integration-rosgz.sh`)
     — a Gazebo-container message crossed gz-transport → parameter_bridge → DDS →
     `ros2 topic echo`, confirming the gz-transport multicast crash was purely

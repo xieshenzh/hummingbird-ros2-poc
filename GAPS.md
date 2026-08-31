@@ -43,6 +43,14 @@ packages need, so we add them ourselves; it also reports a version string the
 package URLs do not expect. These are handled by a setup script today, but they
 are fragile — an upstream URL or layout change would break installs.
 
+### Gazebo needs runtime plugin paths the packages don't set (handled)
+The vendored Gazebo environment script points at its config but not at its system
+plugins or physics engine, so out of the box the simulator starts but loads no
+physics — a body wouldn't fall, even though the clock still advances (which made
+this easy to miss). Our runtime entrypoint now discovers and sets those paths so
+physics actually runs; the risk is that this wiring lives in our entrypoint, not
+upstream, so a future package layout change could require updating it.
+
 ## Image footprint
 
 ### Images are large

@@ -98,19 +98,36 @@ simr "$PREFIX/sim-bundle:simulation" gz sim --version 2>&1 | grep -q "Gazebo Sim
 m=$(simr "$PREFIX/sim-bundle:simulation" bash -c 'ldd /usr/lib64/ros-jazzy/lib/ros_gz_sim/create 2>&1 | grep -c "not found"')
 [ "${m:-1}" -eq 0 ] && pass "ros_gz_sim/create libs resolved" || bad "create has $m missing libs"
 
-echo "--- headless gz sim -s physics stepping (the qemu-blocked one) ---"
+echo "--- headless gz sim -s: physics actually COMPUTES (a ball must fall) ---"
+# NB: a bare rc=0 / iteration-count check is too lenient — /clock advances and
+# the process exits 0 even when the physics *system plugin* and *engine plugin*
+# fail to load (they need GZ_SIM_SYSTEM_PLUGIN_PATH + GZ_SIM_PHYSICS_ENGINE_PATH,
+# set by sim-entrypoint.sh). We assert gravity by checking a free body's Z drops.
 out=$(simr "$PREFIX/sim-bundle:simulation" bash -c '
   cat > /tmp/w.sdf <<EOF
 <?xml version="1.0"?>
-<sdf version="1.8"><world name="w">
+<sdf version="1.8"><world name="demo">
   <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+  <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+  <model name="ball"><pose>0 0 10 0 0 0</pose><link name="l">
+    <inertial><mass>1.0</mass><inertia><ixx>0.1</ixx><iyy>0.1</iyy><izz>0.1</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+    <collision name="c"><geometry><sphere><radius>0.5</radius></sphere></geometry></collision>
+  </link></model>
 </world></sdf>
 EOF
-  timeout 40 gz sim -s -r --iterations 200 /tmp/w.sdf 2>&1; echo "rc=$?"')
-echo "$out" | grep -q "rc=0" && ! echo "$out" | grep -qi "abort\|core dump" \
-  && pass "headless gz sim -s stepped 200 iters" \
-  || soft "headless gz sim -s (see output above; native x86_64 should pass)"
-echo "$out" | tail -3
+  gz sim -s -r -v1 /tmp/w.sdf >/tmp/sim.log 2>&1 &
+  sleep 6
+  timeout 3 gz topic -e -t /world/demo/dynamic_pose/info 2>/dev/null \
+    | grep -A3 "name: \"ball\"" | grep -E "z:" | head -3
+  echo "--- sim.log errors ---"; grep -iE "Failed|Err" /tmp/sim.log | head -3')
+# Lowest reported Z; started at 10. If physics ran, it is well below 9.
+minz=$(echo "$out" | grep -oE 'z: *-?[0-9.]+' | awk '{print $2}' | sort -n | head -1)
+if [ -n "$minz" ] && awk "BEGIN{exit !($minz < 9)}"; then
+  pass "headless gz sim -s physics computes (ball fell to z=$minz)"
+else
+  soft "headless gz sim -s physics (ball did not fall; see output — check plugin paths)"
+fi
+echo "$out"
 
 # ── sim-bundle:gazebo ────────────────────────────────────────────────────────
 hr "sim-bundle:gazebo"

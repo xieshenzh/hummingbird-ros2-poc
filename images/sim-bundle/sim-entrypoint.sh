@@ -57,5 +57,22 @@ if [ -n "${XAUTHORITY:-}" ] && [ -f "$XAUTHORITY" ]; then
 fi
 
 # ROS_DISTRO / LANG / LC_ALL are image ENV and are inherited across chroot.
-exec chroot "$SYSROOT" /bin/bash -c \
-    'source "/usr/lib64/ros-${ROS_DISTRO:-jazzy}/setup.bash"; exec "$@"' bash "$@"
+#
+# The vendored setup.bash only sets GZ_CONFIG_PATH — NOT the two paths gz-sim
+# needs to actually run a simulation. Without them the server starts but silently
+# fails to load any system plugin ("Failed to load system plugin
+# [gz-sim-physics-system]") and finds no physics engine ("Failed to find plugin
+# [gz-physics-dartsim-plugin] ... GZ_SIM_PHYSICS_ENGINE_PATH"), so nothing is
+# actually simulated even though /clock still advances. We discover both by glob
+# (versioned dirs: gz-sim-8, gz-physics-7 today — the glob survives bumps) and
+# append them. On the bridge variant these dirs don't exist, so this is a no-op.
+exec chroot "$SYSROOT" /bin/bash -c '
+    source "/usr/lib64/ros-${ROS_DISTRO:-jazzy}/setup.bash"
+    _pfx="/usr/lib64/ros-${ROS_DISTRO:-jazzy}/opt"
+    for d in "$_pfx"/gz_sim_vendor/lib64/gz-sim-*/plugins; do
+        [ -d "$d" ] && export GZ_SIM_SYSTEM_PLUGIN_PATH="$d${GZ_SIM_SYSTEM_PLUGIN_PATH:+:$GZ_SIM_SYSTEM_PLUGIN_PATH}"
+    done
+    for d in "$_pfx"/gz_physics_vendor/lib64/gz-physics-*/engine-plugins; do
+        [ -d "$d" ] && export GZ_SIM_PHYSICS_ENGINE_PATH="$d${GZ_SIM_PHYSICS_ENGINE_PATH:+:$GZ_SIM_PHYSICS_ENGINE_PATH}"
+    done
+    exec "$@"' bash "$@"
