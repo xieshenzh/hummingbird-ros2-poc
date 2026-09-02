@@ -100,6 +100,7 @@ images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 alr
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash + set GZ_SIM_SYSTEM_PLUGIN_PATH & GZ_SIM_PHYSICS_ENGINE_PATH (else no plugins/physics load — see below) then exec "$@"; needs --cap-add=sys_admin
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
 scripts/gui-verify.sh             native x86_64 GUI launcher: Xvfb + x11vnc + `gz sim <world>` under software GL, reachable over an SSH tunnel (see "Interactive GUI"); verified 2026-09-02
+scripts/gui-cmdvel-demo.sh        native x86_64 "ROS 2 drives the sim via the GUI": pod with gz-gui (diff-drive world, GUI) + ros-bridge (parameter_bridge); `ros2 topic pub /cmd_vel` moves the robot in the live GUI, odometry bridged back; leaves the pod running to drive over VNC; verified 2026-09-02
 scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo `gz topic` publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
 scripts/integration-rosgz-sim.sh  same, but with a REAL running `gz sim -s -r` world bridging /clock (sim time) into ROS 2; native x86_64 only
 scripts/integration-ros2gz.sh     REVERSE direction (ROS 2 -> Gazebo): ros2 pub -> bridge (`] `) -> gz-transport subscriber; native x86_64 only
@@ -174,6 +175,18 @@ toolbars, the Component Inspector (Physics Engine Plugin
 `x11vnc` (localhost) through an SSH tunnel. Screenshot color count 11.8k
 (vs 1 for a blank window); zero config/QML/rendering errors in the `-v3` log.
 Reproduce with **`scripts/gui-verify.sh`** (see below).
+
+**✅ ROS 2 drives the sim THROUGH the GUI — verified 2026-09-02** (same box).
+`scripts/gui-cmdvel-demo.sh` stands up the two-container co-sim in one pod:
+`gz-gui` (a diff-drive `vehicle_blue` world, GUI + physics, running) +
+`ros-bridge` (`ros_gz parameter_bridge` mapping `/cmd_vel` ROS→gz and
+`/model/vehicle_blue/odometry` gz→ROS). `ros2 topic pub /cmd_vel
+geometry_msgs/msg/Twist '{linear:{x:1.0},angular:{z:0.4}}'` → bridge →
+gz-transport (shared pod netns, `GZ_IP=127.0.0.1`) → the DiffDrive plugin drove
+the robot visibly across the live GUI; odometry read back over ROS 2 went from
+x≈0,y≈0 to x≈0.1,y≈5.0. This is the full ROS `/cmd_vel` actuation + sensor-return
+loop with the GUI attached. ⚠️ Software GL is CPU-bound: run only ONE gz GUI at a
+time — two concurrent GUIs starve llvmpipe and paint nothing (colors=1).
 
 - **Runtime plugin/QML wiring needed — now baked into `sim-entrypoint.sh`.**
   Same baked-BUILDROOT-path defect as the headless physics engine, but the GUI
