@@ -99,6 +99,7 @@ images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash + set GZ_SIM_SYSTEM_PLUGIN_PATH & GZ_SIM_PHYSICS_ENGINE_PATH (else no plugins/physics load — see below) then exec "$@"; needs --cap-add=sys_admin
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
+scripts/gui-verify.sh             native x86_64 GUI launcher: Xvfb + x11vnc + `gz sim <world>` under software GL, reachable over an SSH tunnel (see "Interactive GUI"); verified 2026-09-02
 scripts/integration-rosgz.sh      two-container ROS 2 <-> Gazebo integration (podman pod: gazebo `gz topic` publisher -> ros_gz bridge -> ros2 echo); native x86_64 only
 scripts/integration-rosgz-sim.sh  same, but with a REAL running `gz sim -s -r` world bridging /clock (sim time) into ROS 2; native x86_64 only
 scripts/integration-ros2gz.sh     REVERSE direction (ROS 2 -> Gazebo): ros2 pub -> bridge (`] `) -> gz-transport subscriber; native x86_64 only
@@ -161,11 +162,42 @@ COMPLETE Mesa (`/usr/lib64/dri`: hardware drivers `iris`/`radeonsi`/`nouveau`/
 `virtio_gpu` **and** software `swrast_dri.so`/`kms_swrast_dri.so`/`zink_dri.so`).
 `gz sim -g` ("Run only the GUI") is a supported mode.
 
-So a GUI Gazebo on bootc-os is entirely feasible — the base image is NOT the
-blocker. The only requirements are **runtime display + GPU access**:
-- `sim-entrypoint.sh` now binds the host X11 socket (`/tmp/.X11-unix`) and an
+**✅ GUI VERIFIED on native x86_64 (headless EC2, software GL) 2026-09-02.** A
+plain `gz sim <world>` (server + GUI in one process, NO `--gui-config`, NO env
+overrides) renders the full standard Gazebo GUI from the image alone: 3D
+viewport (ground grid, a falling ball + its shadow), the shape/transform
+toolbars, the Component Inspector (Physics Engine Plugin
+`gz-physics-dartsim-plugin`, Solver `DantzigBoxedLcpSolver`, Collision Detector
+`ode`) and the Entity Tree (default/ground/ball/sun). Rendered on an AL2023
+`c6i` box with **no GPU** via bundled Mesa **software GL** (`swrast`/`llvmpipe`,
+`LIBGL_ALWAYS_SOFTWARE=1`), on an `Xvfb :99` virtual display served over
+`x11vnc` (localhost) through an SSH tunnel. Screenshot color count 11.8k
+(vs 1 for a blank window); zero config/QML/rendering errors in the `-v3` log.
+Reproduce with **`scripts/gui-verify.sh`** (see below).
+
+- **Runtime plugin/QML wiring needed — now baked into `sim-entrypoint.sh`.**
+  Same baked-BUILDROOT-path defect as the headless physics engine, but the GUI
+  needs *more* paths than the server: `sim-entrypoint.sh` now also exports
+  `GZ_GUI_PLUGIN_PATH` (gz-gui + gz-sim GUI plugins), `GZ_RENDERING_PLUGIN_PATH`
+  (ogre2 engine), `GZ_RENDERING_RESOURCE_PATH` (OGRE HLMS shader media — the
+  baked path is `ogre2/src/media`, the real one is `ogre2/media`) and
+  **`QML2_IMPORT_PATH`** (the gz-sim `gui/` dir holding the `GzSim` QML module —
+  without it Qt errors `module "GzSim" is not installed` and gz then fails to
+  load the whole GUI config, leaving a blank window). It also seeds the real
+  default `gui.config` into `$HOME/.gz/sim/<v>/` since gz looks for it at the
+  missing BUILDROOT path. All globbed from the sysroot; no-ops on the `bridge`
+  variant. This was the last missing piece — with it, plain `gz sim <world>`
+  "just works" from the image.
+
+So a GUI Gazebo on bootc-os is proven feasible — the base image is NOT the
+blocker. The only external requirement is a **runtime display** (GPU optional —
+software GL works):
+- `sim-entrypoint.sh` binds the host X11 socket (`/tmp/.X11-unix`) and an
   `XAUTHORITY` file into the chroot; `DISPLAY`/`XAUTHORITY`/`LIBGL_ALWAYS_SOFTWARE`
   pass through chroot as env. Headless behaviour is unchanged.
+- Headless-box recipe (Xvfb + VNC, software GL, no GPU) — **verified**, use
+  `scripts/gui-verify.sh`; connect with
+  `ssh -i KEY -L 5900:localhost:5900 ec2-user@HOST` then `open vnc://localhost:5900`.
 - Run recipe (X11 host + GPU):
   ```bash
   xhost +local:
@@ -179,9 +211,8 @@ blocker. The only requirements are **runtime display + GPU access**:
   `-e LIBGL_ALWAYS_SOFTWARE=1` (Mesa swrast/zink are bundled — works, slow).
 - ⚠️ **GUI is x86_64-native only** — it will NOT run under amd64-on-arm64 qemu
   (no GPU passthrough; software GL under qemu is unusable and crashes like the
-  headless physics engine did). Must be tested on a native x86_64 host with a
-  display, or on a booted bootc machine with its own compositor/GPU. NOT YET
-  tested — no native x86_64 host available in this POC.
+  headless physics engine did). Run on a native x86_64 host (software GL is
+  fine), or on a booted bootc machine with its own compositor/GPU.
 
 Two deployment shapes for GUI use:
   (a) **Container GUI** on an x86_64 Linux workstation — the run recipe above

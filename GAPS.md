@@ -6,8 +6,10 @@ and Gazebo images on the Hummingbird `bootc-os` base. Grouped by category.
 Native-hardware validation is **done**: on 2026-08-31 all five images built and
 the full suite passed on a native x86_64 EC2 instance — including default Fast
 DDS, headless `gz sim -s`, and the two-container ROS 2 ↔ Gazebo integration (see
-CLAUDE.md "Verification status"). The interactive **GUI** (`gz sim -g`, needs a
-display + GPU) remains the one verification-pending item and is omitted here.
+CLAUDE.md "Verification status"). The interactive **GUI** (`gz sim`) was the last
+pending item and is now also **verified** (2026-09-02, native x86_64, headless
+box + software GL over VNC) — so there are no verification-pending items left;
+the gaps below are all structural, not untested-functionality gaps.
 
 ## Packaging & upstream dependency
 
@@ -45,11 +47,14 @@ are fragile — an upstream URL or layout change would break installs.
 
 ### Gazebo needs runtime plugin paths the packages don't set (handled)
 The vendored Gazebo environment script points at its config but not at its system
-plugins or physics engine, so out of the box the simulator starts but loads no
-physics — a body wouldn't fall, even though the clock still advances (which made
-this easy to miss). Our runtime entrypoint now discovers and sets those paths so
-physics actually runs; the risk is that this wiring lives in our entrypoint, not
-upstream, so a future package layout change could require updating it.
+plugins, physics engine, GUI plugins, render engine, shader media, or Qt QML
+modules — so out of the box the simulator starts but loads no physics (a body
+wouldn't fall, even though the clock still advances, which made this easy to
+miss) and the GUI opens a blank window. Our runtime entrypoint now discovers and
+sets all of those paths so both the headless server and the interactive GUI work
+from the image alone; the risk is that this wiring lives in our entrypoint, not
+upstream, so a future package layout change could require updating it. (Same root
+cause throughout: the RPMs bake their default paths into a nonexistent build root.)
 
 ## Image footprint
 

@@ -58,21 +58,58 @@ fi
 
 # ROS_DISTRO / LANG / LC_ALL are image ENV and are inherited across chroot.
 #
-# The vendored setup.bash only sets GZ_CONFIG_PATH — NOT the two paths gz-sim
-# needs to actually run a simulation. Without them the server starts but silently
-# fails to load any system plugin ("Failed to load system plugin
-# [gz-sim-physics-system]") and finds no physics engine ("Failed to find plugin
-# [gz-physics-dartsim-plugin] ... GZ_SIM_PHYSICS_ENGINE_PATH"), so nothing is
-# actually simulated even though /clock still advances. We discover both by glob
-# (versioned dirs: gz-sim-8, gz-physics-7 today — the glob survives bumps) and
-# append them. On the bridge variant these dirs don't exist, so this is a no-op.
+# The vendored setup.bash only sets GZ_CONFIG_PATH — NOT the several paths gz-sim
+# needs to actually run a simulation OR open its GUI. Every gz-*-vendor RPM bakes
+# its default plugin/media paths into the nonexistent RPM build root
+# (/builddir/.../BUILDROOT/...), so out of the box:
+#   - the SERVER starts but loads no system plugin ("Failed to load system plugin
+#     [gz-sim-physics-system]") and finds no physics engine ("Failed to find
+#     plugin [gz-physics-dartsim-plugin]") — nothing is simulated even though
+#     /clock still advances; and
+#   - the GUI opens an empty window: its gz-sim/gz-gui plugins, the ogre2 render
+#     engine, and OGRE's shader media all resolve to the missing BUILDROOT path.
+# We rediscover each by glob (versioned dirs: gz-sim-8, gz-physics-7,
+# gz-rendering-8 today — the globs survive version bumps) and export the right
+# GZ_* var. On the bridge variant none of these dirs exist, so every line is a
+# no-op there. Verified on native x86_64: headless physics computes (a body
+# falls) and `gz sim <world>` renders the standard GUI under software GL.
 exec chroot "$SYSROOT" /bin/bash -c '
     source "/usr/lib64/ros-${ROS_DISTRO:-jazzy}/setup.bash"
     _pfx="/usr/lib64/ros-${ROS_DISTRO:-jazzy}/opt"
+
+    # Headless simulation: gz-sim system plugins + physics (dartsim) engine.
     for d in "$_pfx"/gz_sim_vendor/lib64/gz-sim-*/plugins; do
         [ -d "$d" ] && export GZ_SIM_SYSTEM_PLUGIN_PATH="$d${GZ_SIM_SYSTEM_PLUGIN_PATH:+:$GZ_SIM_SYSTEM_PLUGIN_PATH}"
     done
     for d in "$_pfx"/gz_physics_vendor/lib64/gz-physics-*/engine-plugins; do
         [ -d "$d" ] && export GZ_SIM_PHYSICS_ENGINE_PATH="$d${GZ_SIM_PHYSICS_ENGINE_PATH:+:$GZ_SIM_PHYSICS_ENGINE_PATH}"
     done
+
+    # GUI: gz-gui + gz-sim GUI plugins, the ogre2 render engine, and its media.
+    for d in "$_pfx"/gz_gui_vendor/lib64/gz-gui-*/plugins \
+             "$_pfx"/gz_sim_vendor/lib64/gz-sim-*/plugins/gui; do
+        [ -d "$d" ] && export GZ_GUI_PLUGIN_PATH="$d${GZ_GUI_PLUGIN_PATH:+:$GZ_GUI_PLUGIN_PATH}"
+    done
+    for d in "$_pfx"/gz_rendering_vendor/lib64/gz-rendering-*/engine-plugins; do
+        [ -d "$d" ] && export GZ_RENDERING_PLUGIN_PATH="$d${GZ_RENDERING_PLUGIN_PATH:+:$GZ_RENDERING_PLUGIN_PATH}"
+    done
+    for d in "$_pfx"/gz_rendering_vendor/share/gz/gz-rendering*; do
+        [ -d "$d" ] && export GZ_RENDERING_RESOURCE_PATH="$d${GZ_RENDERING_RESOURCE_PATH:+:$GZ_RENDERING_RESOURCE_PATH}"
+    done
+    # Qt needs the gz-sim GUI QML modules (e.g. "GzSim") on its import path, or
+    # panels like ComponentInspector/EntityTree fail ("module GzSim is not
+    # installed") and gz then fails to load the whole GUI config -> blank window.
+    for d in "$_pfx"/gz_sim_vendor/lib64/gz-sim-*/plugins/gui; do
+        [ -d "$d" ] && export QML2_IMPORT_PATH="$d${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+    done
+    # gz sim cannot find its default GUI config (same baked-BUILDROOT path), so
+    # seed the real one into $HOME — then plain "gz sim <world>" opens the normal
+    # GUI without needing --gui-config.
+    for cfg in "$_pfx"/gz_sim_vendor/share/gz/gz-sim*/gui/gui.config; do
+        [ -f "$cfg" ] || continue
+        _b="${cfg%/gui/gui.config}"; _v="${_b##*/gz-sim}"
+        _dest="${HOME:-/root}/.gz/sim/$_v/gui.config"
+        [ -f "$_dest" ] || { mkdir -p "${_dest%/*}" && cp "$cfg" "$_dest"; }
+    done
+
     exec "$@"' bash "$@"
