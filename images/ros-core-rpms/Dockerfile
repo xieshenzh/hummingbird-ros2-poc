@@ -64,7 +64,7 @@ RUN dnf -y install --setopt=install_weak_deps=0 createrepo_c \
     && dnf -y remove createrepo_c \
     && rm -rf /var/tmp/ros-local-rpms /etc/yum.repos.d/ros-local.repo \
     && dnf clean all \
-    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log
+    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf
 
 # ── Environment setup ──
 # Our RPMs install setup scripts under /usr/lib64/ros-${ROS_DISTRO} (same FHS
