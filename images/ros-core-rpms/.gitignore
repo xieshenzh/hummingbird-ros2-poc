@@ -1,0 +1,4 @@
+# Locally-built ROS 2 Jazzy RPMs, copied in from the build VM before `podman
+# build` (see README.md / the Dockerfile header). Not committed — these are
+# build artifacts tracked as spec sources in the hummingbird-rpms monorepo.
+rpms/
