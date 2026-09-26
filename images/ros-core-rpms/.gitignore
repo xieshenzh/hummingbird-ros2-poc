@@ -2,3 +2,5 @@
 # build` (see README.md / the Dockerfile header). Not committed — these are
 # build artifacts tracked as spec sources in the hummingbird-rpms monorepo.
 rpms/
+# x86_64 RPMs built natively on EC2 (2026-09-25), kept for the x86_64 image.
+rpms-x86_64/
