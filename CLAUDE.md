@@ -15,6 +15,78 @@ Modeled structurally on the auto-generated `osrf/docker_images` ROS 2
 Dockerfiles (`create_ros_core_image.Dockerfile.em` → ros-core, then ros-base
 `FROM ros-core`), translated from apt/Ubuntu to dnf/Fedora.
 
+## TWO package sources — read this first
+
+This POC now has **two independent ways** to get ROS 2 onto bootc-os. Most of
+this file (Established facts, sim-bundle, Gazebo, Verification) documents the
+FIRST; the SECOND is the strategic direction and is summarized in its own
+section immediately below.
+
+1. **tavie/ros2 COPR** (community, unofficial) — the original path. x86_64-only,
+   Fedora-packaged Jazzy. Basis for `images/ros-core`, `images/ros-base`,
+   `images/gazebo`, `images/sim-bundle`. Still the only source for the
+   Gazebo/simulation images.
+2. **Hummingbird-built RPMs** (`images/ros-core-rpms`) — ROS 2 Jazzy built the
+   Hummingbird way from official upstream sources (no COPR). The `ros_core`
+   closure is **COMPLETE on BOTH aarch64 and x86_64**. See next section.
+
+## ROS 2 as Hummingbird-built RPMs (`images/ros-core-rpms`) — ros_core DONE, both arches
+
+The strategic alternative to the COPR: build the ROS 2 Jazzy packages ourselves,
+the Hummingbird way — the `rpms` monorepo dev workflow (`ci/build_rpms.sh`
+running **mock** inside a pinned Fedora container, from **official upstream
+sources**, SHA512-pinned in each package's `sources` file). Specs live in the
+`hummingbird-rpms` monorepo on branch `add-ros2-jazzy-packages`. This removes
+both COPR limitations: it is not third-party, and it is **not x86_64-only**.
+
+- **Status: the `ros_core` closure = 162 `ros-jazzy-*` RPMs, built 1:1 (source
+  → binary, no debuginfo).**
+  - **aarch64** — DONE 2026-09-13, built NATIVELY on Apple Silicon (Fedora
+    aarch64 Lima VM, no qemu). RPMs staged in `images/ros-core-rpms/rpms/`.
+  - **x86_64** — DONE 2026-09-25, built NATIVELY on an AL2023 `c6i` EC2 box
+    (rootful podman 5.6.1, no qemu, no `--platform`). Same specs/sources/tarballs
+    as aarch64 — only `build_rpms.sh --arch x86_64` differs (mock's
+    `legal_host_arches` requires an x86_64 HOST, hence a native x86_64 machine).
+    RPMs staged in `images/ros-core-rpms/rpms-x86_64/` (105 noarch + 57 compiled
+    x86_64; verified byte-exact on copy-down). Both dirs are gitignored (build
+    artifacts; the specs are the tracked source in the monorepo).
+- **The image** (`images/ros-core-rpms/Dockerfile`, arch-agnostic): `FROM
+  bootc-os`; `enable-repos.sh` adds only the stock Fedora repos (NO COPR — the
+  base already enables the Hummingbird repo, which provides the load-bearing
+  `spdlog-1.17.0`, i.e. `libspdlog.so.1.17`, that plain Fedora lacks — Fedora has
+  1.15); COPY the RPMs → `createrepo_c` a transient local repo under `/var/tmp` →
+  `dnf install ros-jazzy-ros-core ros-jazzy-ament-package` → remove the
+  repo/RPMs/createrepo_c. Reuses `images/ros-core`'s `ros-entrypoint.sh` +
+  `ros2-profile.sh` verbatim — our RPMs use the SAME `/usr/lib64/ros-jazzy` FHS
+  prefix as tavie.
+- **Verified (both arches, NATIVE — no qemu):** closure resolves; `ros2` CLI
+  works; login shell auto-sources ROS; FHS `setup.bash` at
+  `/usr/lib64/ros-jazzy/`; **DEFAULT Fast DDS pub/sub WORKS** (the old Fast-DDS
+  failure was purely amd64-on-arm64 emulation — gone on native hardware of either
+  arch); `bootc container lint` passes (aarch64 13/0, x86_64 14 pass / 1 skip);
+  `CMD [/sbin/init]` + kernel + `bootc` inherited (bootable). Image sizes:
+  **aarch64 1.39 GB, x86_64 1.33 GB** — both smaller than the COPR `ros-core`
+  (1.96 GB).
+- **x86_64 build mechanics (2026-09-25):** driven by a multi-pass,
+  failure-tolerant batch driver (scratch, lived only on the EC2 box). A
+  build-order derived from **`BuildRequires:` only** misses runtime `Requires:`
+  edges (e.g. building `ament-cmake` pulls `ament-cmake-export-dependencies`,
+  which *Requires* `ament-cmake-libraries` — an edge the sort never saw), so a
+  strict single pass stalls; retrying the unbuilt set pass-over-pass converged in
+  **4 passes**. A full runtime-Requires-aware order would build all 162 in one
+  pass, but a Kahn sort over that graph risks silently dropping cyclic nodes —
+  the retry loop was the lower-risk choice. Those scratch scripts are NOT in the
+  repo and are gone with the terminated instance; regenerate from the specs if a
+  rebuild is needed.
+- **⚠️ spdlog soname pin:** `rcl_logging_spdlog` links `libspdlog.so.1.17`,
+  provided by the **Hummingbird** repo's `spdlog-1.17`, NOT Fedora's own 1.15. A
+  closure dry-run WITHOUT the Hummingbird repo falsely reports "nothing provides
+  libspdlog.so.1.17" — always include it. bootc-os is built from that same repo,
+  so the target already has 1.17.
+- **NOT yet done as Hummingbird RPMs:** `ros-base`, `simulation`, `gazebo` (only
+  the `ros_core` closure is built); and actually BOOTING the image
+  (bootc-image-builder qcow2 + SSH login). These remain COPR-only / pending.
+
 ## Established facts (verified during design)
 
 - **Base image:** `quay.io/hummingbird-community/bootc-os:latest`
@@ -90,6 +162,10 @@ images/ros-core/enable-repos.sh   adds Fedora repos + release-pinned tavie COPR 
 images/ros-core/ros-entrypoint.sh sources /usr/lib64/ros-$ROS_DISTRO/setup.bash then exec "$@"
 images/ros-core/ros2-profile.sh   /etc/profile.d hook, auto-source for interactive bash login shells
 images/ros-base/Dockerfile        FROM ros-core (ARG BASE_IMAGE); adds ros-base
+images/ros-core-rpms/Dockerfile   FROM bootc-os; ros-core from HUMMINGBIRD-BUILT RPMs (NO COPR). createrepo_c a local repo from rpms/ (or rpms-x86_64/) then dnf install ros-jazzy-ros-core. Arch-agnostic.
+images/ros-core-rpms/enable-repos.sh  adds ONLY the stock Fedora repos (base already has the hummingbird repo → spdlog-1.17); no COPR
+images/ros-core-rpms/rpms/         aarch64 ros-jazzy-* RPMs (162; gitignored build artifacts; specs live in the hummingbird-rpms monorepo)
+images/ros-core-rpms/rpms-x86_64/  x86_64 ros-jazzy-* RPMs (162; gitignored; kept SEPARATE from aarch64 — never mix arches)
 images/simulation/Dockerfile      FROM ros-base (ARG BASE_IMAGE); adds ros-<distro>-simulation (osrf variant; incl. ros_gz bridge)
 images/gazebo/Dockerfile          FROM bootc-os; standalone Gazebo Harmonic (gz-*-vendor, NO ROS middleware)
 images/gazebo/enable-repos.sh     copy of ros-core's (separate build context; keep in sync)
@@ -255,6 +331,10 @@ All images are **x86_64-only** (tavie has no aarch64 build). On an arm64 host
 ```bash
 podman build -t hummingbird-ros2-poc/ros-core:latest images/ros-core
 podman build -t hummingbird-ros2-poc/ros-base:latest images/ros-base
+# ros-core from Hummingbird-built RPMs (no COPR). Build on the MATCHING arch —
+# aarch64 uses rpms/, x86_64 uses rpms-x86_64/ (stage the right set into ./rpms/
+# first, since the Dockerfile COPYs rpms/). Native per arch; no emulation.
+podman build -t hummingbird-ros2-poc/ros-core-rpms:latest images/ros-core-rpms
 # native simulation/gazebo are BLOCKED (boost skew) — use sim-bundle instead:
 podman build --build-arg VARIANT=bridge     -t hummingbird-ros2-poc/sim-bundle:bridge     images/sim-bundle
 podman build --build-arg VARIANT=simulation -t hummingbird-ros2-poc/sim-bundle:simulation images/sim-bundle
@@ -438,9 +518,11 @@ podman build --build-arg VARIANT=gazebo     -t hummingbird-ros2-poc/sim-bundle:g
 - **Gazebo rendering:** gz-sim's GUI/sensors need OpenGL/GPU (ogre-next). Headless
   server (`gz sim -s`) should work in a container; the GUI needs GPU/display
   passthrough. Verify what the POC actually requires.
-- **arm64:** tavie is x86_64-only. If target robots are arm64, this whole
-  package source is a dead end — would need another ROS-on-Fedora source or to
-  build the RPMs ourselves. (POC scoped to x86_64.)
+- **arm64:** tavie is x86_64-only, so the COPR-sourced images
+  (`gazebo`/`simulation`/`sim-bundle`) stay x86_64-only. RESOLVED for the base
+  stack, though: we built the `ros_core` RPMs ourselves for aarch64 too (see "ROS
+  2 as Hummingbird-built RPMs" above) — `images/ros-core-rpms` runs natively on
+  arm64. Extending that to `ros-base`/Gazebo would lift the arch limit everywhere.
 - **Fedora GPG keys:** bootc-os ships none, so `enable-repos.sh` points the
   `fedora`/`updates` repos at the online Fedora key
   (`src.fedoraproject.org/.../RPM-GPG-KEY-fedora-<rel>-primary`); dnf imports it

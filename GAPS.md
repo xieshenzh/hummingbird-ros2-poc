@@ -13,16 +13,36 @@ the gaps below are all structural, not untested-functionality gaps.
 
 ## Packaging & upstream dependency
 
-### Architecture coverage
-The only package source we have (the community `tavie/ros2` COPR) builds for
-x86_64 only — there is no aarch64 build. If target robots are arm64, this
-package source is a dead end and the RPMs would have to come from elsewhere or
-be built in-house.
+> **Largely resolved for the ros-core path (2026-09).** We now build ROS 2 Jazzy
+> ourselves the Hummingbird way (the `rpms` monorepo dev workflow, from official
+> upstream sources) instead of relying on the COPR. The `ros_core` closure — 162
+> `ros-jazzy-*` RPMs — is built and image-verified on **both aarch64 and x86_64**
+> (see `images/ros-core-rpms` and CLAUDE.md "ROS 2 as Hummingbird-built RPMs").
+> The two gaps below therefore no longer apply to `ros-core`; they still apply to
+> the Gazebo/simulation images, which remain COPR-sourced.
 
-### Dependence on an unofficial upstream
-The whole stack rests on a single community-maintained package repository. It
-is not official, and its availability, versions, and continued Fedora 43 / Jazzy
-support are outside our control.
+### Architecture coverage — RESOLVED for ros-core, open for Gazebo/sim
+The community `tavie/ros2` COPR builds for x86_64 only — no aarch64 build — so
+any image sourced from it is x86_64-only (that is still true of
+`gazebo`/`simulation`/`sim-bundle`). This is no longer a dead end for the base
+stack: the Hummingbird-built `ros_core` RPMs exist for **both** arches, built
+natively on each (aarch64 on Apple Silicon, x86_64 on EC2). Extending the in-house
+build to `ros-base` (and eventually the Gazebo stack) would remove the COPR's
+arch limit everywhere.
+
+### Dependence on an unofficial upstream — RESOLVED for ros-core, open for Gazebo/sim
+For `ros-core` the stack no longer rests on the community COPR: the packages are
+Hummingbird-maintained specs built from official upstream release tarballs
+(SHA512-pinned), under our control. The Gazebo/simulation images still depend on
+the single community-maintained COPR, whose availability, versions, and continued
+Fedora 43 / Jazzy support are outside our control.
+
+### ros-base / Gazebo / simulation not yet built as Hummingbird RPMs
+The in-house RPM effort so far covers only the `ros_core` closure. `ros-base`,
+`simulation`, and `gazebo` are still COPR-only. Building `ros-base` as Hummingbird
+RPMs is the natural next step (a superset of the ros_core closure); the Gazebo
+stack additionally needs the boost/ogre-next fix noted below before it can be
+packaged cleanly.
 
 ## Base image compatibility
 
