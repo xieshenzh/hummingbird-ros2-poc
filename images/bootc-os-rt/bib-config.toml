@@ -1,0 +1,27 @@
+# bootc-image-builder customization for a *demo* bootc-os-rt qcow2.
+#
+# Used to turn the ros-core-rpms-rt / bootc-os-rt OCI image into a bootable qcow2
+# so the PREEMPT_RT kernel can be booted and verified (see README.md "Boot" and
+# scripts/rt-serial-verify.py). Example:
+#
+#   sudo podman run --rm -it --privileged --security-opt label=disable \
+#     -v ./bib-config.toml:/config.toml:ro \
+#     -v ./output:/output -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 --rootfs ext4 --local \
+#     localhost/hummingbird-ros2-poc/ros-core-rpms-rt-chunked:latest
+#
+# NOTE: --rootfs ext4 is REQUIRED — bootc-os declares no default rootfs and the
+# bib image lacks mkfs.xfs.
+#
+# ⚠️ DEMO CREDENTIALS ONLY. This bakes a throwaway password-login user so a
+# headless TCG VM (no SSH — AL2023 qemu has no user-mode net) can be driven over
+# the serial console. Do NOT use as-is for anything real: set a strong password
+# (or drop `password` and keep only `key`), and replace the placeholder SSH key
+# with your own public key.
+
+[[customizations.user]]
+name = "rt"
+password = "rtdemo123"  # DEMO ONLY — replace before any real use
+groups = ["wheel"]
+key = "ssh-ed25519 AAAA...REPLACE_WITH_YOUR_PUBLIC_KEY... you@example.com"

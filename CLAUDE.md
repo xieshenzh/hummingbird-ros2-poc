@@ -236,6 +236,7 @@ images/bootc-os-rt/Dockerfile     FROM bootc-os; swaps stock kernel -> kernel-rt
 images/bootc-os-rt/kargs.d/10-realtime.toml  RT boot args (preempt=full, nowatchdog; commented isolcpus/nohz_full/rcu_nocbs template)
 images/bootc-os-rt/rpms-rt/        local kernel-rt-* RPMs (gitignored build artifacts; produce with scripts/rt-kernel-build.sh)
 images/bootc-os-rt/README.md       build/verify + mapping to the productized containers-monorepo hummingbird/rt/ variant
+images/bootc-os-rt/bib-config.toml bootc-image-builder customization (DEMO user rt/rtdemo123 for serial-console boot verify; replace creds/key before real use)
 images/simulation/Dockerfile      FROM ros-base (ARG BASE_IMAGE); adds ros-<distro>-simulation (osrf variant; incl. ros_gz bridge)
 images/gazebo/Dockerfile          FROM bootc-os; standalone Gazebo Harmonic (gz-*-vendor, NO ROS middleware)
 images/gazebo/enable-repos.sh     copy of ros-core's (separate build context; keep in sync)
@@ -245,6 +246,8 @@ images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash + set GZ_SIM_SYSTEM_PLUGIN_PATH & GZ_SIM_PHYSICS_ENGINE_PATH (else no plugins/physics load — see below) then exec "$@"; needs --cap-add=sys_admin
 scripts/rt-kernel-build.sh        builds kernel-rt from the pinned Fedora kernel SRPM via `--with rtonly` (rpmbuild in a fedora:43 container; native x86_64; WITH_DEBUGINFO=1 for production)
+scripts/rechunk-image.sh          rechunk an OCI image into content-based layers via the standalone chunkah image (one layer per RPM, kernel isolated for clean dedup on kernel swaps); rootful podman, no buildah. Used on ros-core-rpms-rt (1.56→1.19 GB, 64 layers)
+scripts/rt-serial-verify.py       drive a booted bootc-os-rt qcow2 over its qemu serial unix socket (no SSH): log in, capture `uname -v`/kargs, assert PREEMPT_RT, power off. For the no-KVM TCG boot path (see images/bootc-os-rt/README.md)
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
 scripts/gui-verify.sh             native x86_64 GUI launcher: Xvfb + x11vnc + `gz sim <world>` under software GL, reachable over an SSH tunnel (see "Interactive GUI"); verified 2026-09-02
 scripts/gui-cmdvel-demo.sh        native x86_64 "ROS 2 drives the sim via the GUI": pod with gz-gui (diff-drive world, GUI) + ros-bridge (parameter_bridge); `ros2 topic pub /cmd_vel` moves the robot in the live GUI, odometry bridged back; leaves the pod running to drive over VNC; verified 2026-09-02
