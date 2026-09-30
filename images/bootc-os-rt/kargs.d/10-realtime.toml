@@ -1,0 +1,29 @@
+# Real-time tuning kernel arguments for the PREEMPT_RT kernel.
+#
+# bootc merges every /usr/lib/bootc/kargs.d/*.toml into the boot loader entry at
+# deploy time (alongside the base's 00-base.toml console args).
+#
+# CONSERVATIVE DEFAULTS ONLY. The PREEMPT_RT kernel already threads IRQs and
+# fully preempts in-kernel; the aggressive CPU-isolation arguments (isolcpus /
+# nohz_full / rcu_nocbs) are hardware- and workload-specific and can make a
+# machine unusable if the CPU ranges are wrong, so they are left as a commented
+# template below — set the ranges for your target and move them into `kargs`.
+kargs = [
+  # Keep the dynamic-preempt model at full preemption too (PREEMPT_DYNAMIC is
+  # also enabled in the RT build; harmless and explicit on an RT kernel).
+  "preempt=full",
+  # The soft/hard lockup watchdogs fire a periodic timer that adds latency
+  # jitter; disable them for deterministic behaviour.
+  "nowatchdog",
+]
+
+# ── Aggressive isolation template (EXAMPLE — do not enable blindly) ──
+# For an 8-core target dedicating cores 2-7 to real-time work and keeping the
+# housekeeping load on cores 0-1. Merge these into `kargs` above (a TOML file
+# may only define `kargs` once) after adjusting the CPU ranges:
+#
+#   "isolcpus=managed_irq,domain,2-7",  # keep the scheduler + managed IRQs off 2-7
+#   "nohz_full=2-7",                    # stop the scheduler tick on isolated CPUs
+#   "rcu_nocbs=2-7",                    # offload RCU callbacks away from 2-7
+#   "irqaffinity=0-1",                  # pin device IRQs to the housekeeping CPUs
+#   "skew_tick=1",                      # de-synchronise remaining timer ticks

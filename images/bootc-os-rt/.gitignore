@@ -1,0 +1,3 @@
+# Locally-built kernel-rt RPMs (build artifacts). The tracked source is the
+# Fedora kernel SRPM + scripts/rt-kernel-build.sh; regenerate with that script.
+rpms-rt/
