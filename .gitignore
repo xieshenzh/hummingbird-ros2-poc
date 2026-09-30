@@ -17,3 +17,6 @@ output/
 # Build logs and scratch
 *.log
 tmp/
+
+# Large binary build artifacts (RT kernel RPMs, chunked image tarball, qcow2)
+artifacts/
