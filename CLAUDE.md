@@ -87,6 +87,43 @@ both COPR limitations: it is not third-party, and it is **not x86_64-only**.
   the `ros_core` closure is built); and actually BOOTING the image
   (bootc-image-builder qcow2 + SSH login). These remain COPR-only / pending.
 
+## Real-time (PREEMPT_RT) kernel — `images/bootc-os-rt` (kernel-rt built, image drafted)
+
+Robotics/physical-AI needs bounded worst-case latency, so bootc-os needs a
+PREEMPT_RT kernel option. **No custom kernel packaging is required**: the Fedora
+kernel SRPM bootc-os already pins (`kernel-7.1.8-100.fc43`) ships the full RT
+flavor (the ark lineage that also yields RHEL `kernel-rt` / AutoSD
+`kernel-automotive`). The RT kernel = rebuild that SAME SRPM with the spec's own
+`--with rtonly` toggle.
+
+- **kernel-rt BUILT & verified (x86_64, 2026-09-30)** on a native `c7i`-class
+  EC2 box (16 vCPU / 30 GB, AL2023, rootful podman + fedora:43 container),
+  `rpmbuild --rebuild --with rtonly` — fast pass (`--without debuginfo`) ~29 min.
+  Build log `BUILDING A KERNEL FOR rt x86_64`; shipped config has
+  **`CONFIG_PREEMPT_RT=y`** (genuine RT). Driver: `scripts/rt-kernel-build.sh`
+  (`WITH_DEBUGINFO=1` for the production build).
+  - Subpackages, uname flavor `7.1.8-100.fc43.x86_64+rt` (`+rt` suffix):
+    `kernel-rt` (meta), `kernel-rt-core` (19 MB), `kernel-rt-modules-core`
+    (41 MB), `kernel-rt-modules`, `-modules-extra`, `-modules-internal`,
+    `kernel-rt-devel` (48 MB), `-matched` stubs.
+  - `Requires: realtime-setup` is on the `kernel-rt` META only — NOT on
+    `kernel-rt-core`/`-modules-core`. So the minimal bootc install set =
+    `kernel-rt-core` + `kernel-rt-modules-core` (~58 MB) and needs no
+    realtime-setup — closure de-risked.
+- **The image** (`images/bootc-os-rt/Dockerfile`): `FROM bootc-os`, inject the
+  local kernel-rt RPMs (mirrors `ros-core-rpms`, since the RT RPMs are not yet in
+  the Hummingbird koji repo), swap stock `kernel*` → `kernel-rt-core` +
+  `kernel-rt-modules-core`, regen initramfs for the `+rt` kver, add RT kargs.d,
+  `bootc container lint`. Stays bootable (inherits `/sbin/init`, bootloader,
+  bootc). No Fedora repos added: the RT kernel shares the stock kernel's runtime
+  deps, already in the base.
+- **Open:** Secure Boot signing (self-built kernel-rt unsigned by Fedora's key —
+  boots only with SB off until signed); **aarch64** RT build (same SRPM + `--with
+  rtonly` on a native arm64 box); actually BUILDING/BOOTING the image +
+  `cyclictest` latency numbers. Productization = a `hummingbird/rt/` bootc-os
+  variant in the containers monorepo (MAIN_PACKAGES kernel swap) once kernel-rt
+  is published — see `images/bootc-os-rt/README.md`.
+
 ## Established facts (verified during design)
 
 - **Base image:** `quay.io/hummingbird-community/bootc-os:latest`
@@ -166,6 +203,10 @@ images/ros-core-rpms/Dockerfile   FROM bootc-os; ros-core from HUMMINGBIRD-BUILT
 images/ros-core-rpms/enable-repos.sh  adds ONLY the stock Fedora repos (base already has the hummingbird repo → spdlog-1.17); no COPR
 images/ros-core-rpms/rpms/         aarch64 ros-jazzy-* RPMs (162; gitignored build artifacts; specs live in the hummingbird-rpms monorepo)
 images/ros-core-rpms/rpms-x86_64/  x86_64 ros-jazzy-* RPMs (162; gitignored; kept SEPARATE from aarch64 — never mix arches)
+images/bootc-os-rt/Dockerfile     FROM bootc-os; swaps stock kernel -> kernel-rt (PREEMPT_RT) from local RPMs, regen initramfs, RT kargs.d. POC (mirrors ros-core-rpms).
+images/bootc-os-rt/kargs.d/10-realtime.toml  RT boot args (preempt=full, nowatchdog; commented isolcpus/nohz_full/rcu_nocbs template)
+images/bootc-os-rt/rpms-rt/        local kernel-rt-* RPMs (gitignored build artifacts; produce with scripts/rt-kernel-build.sh)
+images/bootc-os-rt/README.md       build/verify + mapping to the productized containers-monorepo hummingbird/rt/ variant
 images/simulation/Dockerfile      FROM ros-base (ARG BASE_IMAGE); adds ros-<distro>-simulation (osrf variant; incl. ros_gz bridge)
 images/gazebo/Dockerfile          FROM bootc-os; standalone Gazebo Harmonic (gz-*-vendor, NO ROS middleware)
 images/gazebo/enable-repos.sh     copy of ros-core's (separate build context; keep in sync)
@@ -174,6 +215,7 @@ images/gazebo/gz-profile.sh       /etc/profile.d hook for interactive bash login
 images/sim-bundle/Dockerfile      multi-stage: fedora:43 builder installs the gz stack into an isolated /sysroot, then COPY into bootc-os at /usr/lib/ros-sysroot (VARIANT=bridge|simulation|gazebo)
 images/sim-bundle/tavie-ros2.repo COPR repo for the builder stage (fedora:43 already has fedora/updates repos+keys)
 images/sim-bundle/sim-entrypoint.sh chroot into the sysroot (rbind /proc,/dev,/sys, + X11 socket for GUI) + source setup.bash + set GZ_SIM_SYSTEM_PLUGIN_PATH & GZ_SIM_PHYSICS_ENGINE_PATH (else no plugins/physics load — see below) then exec "$@"; needs --cap-add=sys_admin
+scripts/rt-kernel-build.sh        builds kernel-rt from the pinned Fedora kernel SRPM via `--with rtonly` (rpmbuild in a fedora:43 container; native x86_64; WITH_DEBUGINFO=1 for production)
 scripts/ec2-verify.sh             native x86_64 build+test of all 5 images (run on an EC2 instance; covers the qemu-blocked Fast-DDS + headless gz sim + integration checks)
 scripts/gui-verify.sh             native x86_64 GUI launcher: Xvfb + x11vnc + `gz sim <world>` under software GL, reachable over an SSH tunnel (see "Interactive GUI"); verified 2026-09-02
 scripts/gui-cmdvel-demo.sh        native x86_64 "ROS 2 drives the sim via the GUI": pod with gz-gui (diff-drive world, GUI) + ros-bridge (parameter_bridge); `ros2 topic pub /cmd_vel` moves the robot in the live GUI, odometry bridged back; leaves the pod running to drive over VNC; verified 2026-09-02
@@ -335,6 +377,9 @@ podman build -t hummingbird-ros2-poc/ros-base:latest images/ros-base
 # aarch64 uses rpms/, x86_64 uses rpms-x86_64/ (stage the right set into ./rpms/
 # first, since the Dockerfile COPYs rpms/). Native per arch; no emulation.
 podman build -t hummingbird-ros2-poc/ros-core-rpms:latest images/ros-core-rpms
+# bootc-os with a PREEMPT_RT kernel. Stage kernel-rt RPMs into images/bootc-os-rt/rpms-rt/
+# first (build them with scripts/rt-kernel-build.sh). Native per arch; no emulation.
+podman build -t hummingbird-ros2-poc/bootc-os-rt:latest images/bootc-os-rt
 # native simulation/gazebo are BLOCKED (boost skew) — use sim-bundle instead:
 podman build --build-arg VARIANT=bridge     -t hummingbird-ros2-poc/sim-bundle:bridge     images/sim-bundle
 podman build --build-arg VARIANT=simulation -t hummingbird-ros2-poc/sim-bundle:simulation images/sim-bundle
