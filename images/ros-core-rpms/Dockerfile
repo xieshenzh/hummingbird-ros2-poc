@@ -27,7 +27,13 @@
 # then build for the matching arch (native on Apple Silicon = aarch64):
 #     podman build -t hummingbird-ros2-poc/ros-core-rpms:latest images/ros-core-rpms
 
-FROM quay.io/hummingbird-community/bootc-os:latest
+# BASE_IMAGE defaults to plain bootc-os. Override it to layer ROS 2 on a
+# different bootc-os variant — e.g. the PREEMPT_RT image from images/bootc-os-rt
+# for a real-time robot OS with ROS 2 baked in:
+#   podman build --build-arg BASE_IMAGE=localhost/hummingbird-ros2-poc/bootc-os-rt:latest \
+#     -t hummingbird-ros2-poc/ros-core-rpms-rt:latest images/ros-core-rpms
+ARG BASE_IMAGE=quay.io/hummingbird-community/bootc-os:latest
+FROM ${BASE_IMAGE}
 
 # ROS distribution shipped in this image. Jazzy is the current LTS.
 ENV ROS_DISTRO=jazzy \
