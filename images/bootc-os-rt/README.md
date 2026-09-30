@@ -11,12 +11,16 @@ The image stays a valid, bootable bootc image — it inherits `systemd`,
 `/sbin/init`, the bootloader and `bootc` from the base; only the kernel, its
 initramfs, and a `kargs.d` drop-in change.
 
-**Status (x86_64, 2026-09-30): BUILT & verified natively** on a `c7i`-class EC2
-box (rootful podman, no qemu). `bootc container lint` = 14 checks / 0 warnings;
-exactly one modules dir (`7.1.8-100.fc43.x86_64+rt`) with `CONFIG_PREEMPT_RT=y`,
-initramfs regenerated under `/usr/lib/modules`, `/boot` empty, RT kargs applied,
-stock kernel fully removed. **Image size 1.08 GB** (base bootc-os 909 MB + the
-RT kernel ~170 MB). Not yet booted (see Open items).
+**Status (x86_64, 2026-09-30): BUILT, lint-clean & BOOTED.** Built natively on a
+`c7i`-class EC2 box (rootful podman, no qemu). `bootc container lint` = 14 checks
+/ 0 warnings; exactly one modules dir (`7.1.8-100.fc43.x86_64+rt`) with
+`CONFIG_PREEMPT_RT=y`, initramfs regenerated under `/usr/lib/modules`, `/boot`
+empty, RT kargs applied, stock kernel fully removed. **Image size 1.08 GB** (base
+bootc-os 909 MB + the RT kernel ~170 MB). **Booted** to a qcow2 under qemu TCG
+and confirmed the running kernel is genuine PREEMPT_RT (see Verify → Boot).
+ROS 2 layers cleanly on top — `images/ros-core-rpms` with `--build-arg
+BASE_IMAGE=…/bootc-os-rt:latest` yields `ros-core-rpms-rt` (RT kernel + ros-core,
+1.56 GB), a real-time robot OS with ROS 2 in the immutable `/usr`.
 
 ## Why real-time?
 
@@ -71,17 +75,51 @@ podman run --rm hummingbird-ros2-poc/bootc-os-rt:latest \
 podman run --rm hummingbird-ros2-poc/bootc-os-rt:latest bootc container lint --no-truncate
 ```
 
-To actually boot it and measure latency: convert to qcow2 with
-`quay.io/centos-bootc/bootc-image-builder`, boot the VM, then
-`uname -v` (should show `PREEMPT_RT`) and `cyclictest -m -p95 -i200 -d0 -l100000`
-(from `rt-tests`) for the worst-case latency figure.
+### Boot (verified 2026-09-30, x86_64)
+
+```bash
+# 1. qcow2 (bootc-os declares no default rootfs, so pass --rootfs; the bib image
+#    shipped mkfs.ext4 but not mkfs.xfs, hence ext4):
+sudo podman run --rm --privileged --security-opt label=type:unconfined_t \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  -v $PWD/bib-out:/output -v $PWD/bib-config.toml:/config.toml:ro \
+  quay.io/centos-bootc/bootc-image-builder:latest \
+  --type qcow2 --rootfs ext4 localhost/hummingbird-ros2-poc/bootc-os-rt:latest
+
+# 2. Boot under qemu. Our kernel-rt is UNSIGNED, so use the NON-secboot OVMF.
+qemu-system-x86_64 -accel kvm -m 4096 -smp 4 -machine q35 \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,file=./OVMF_VARS.fd \
+  -drive file=bib-out/qcow2/disk.qcow2,format=qcow2,if=virtio -nographic
+```
+
+In the booted VM the authoritative RT check is the kernel version string:
+
+```bash
+uname -v            # => #1 SMP PREEMPT_RT ...   (printed ONLY when CONFIG_PREEMPT_RT=y)
+uname -r            # => 7.1.8-100.fc43.x86_64+rt
+cat /proc/cmdline   # shows the RT kargs: preempt=full nowatchdog
+```
+
+⚠️ **Do NOT rely on `/sys/kernel/realtime`** — it is ABSENT on this Fedora ark
+`kernel-rt` (that sysfs file is a RHEL-`kernel-rt`-only convenience patch, not
+part of mainline/Fedora PREEMPT_RT). `uname -v` / the boot banner is the check.
+
+For worst-case latency, `cyclictest -m -p95 -i200 -d0 -l100000` (from `rt-tests`,
+which must be baked into the image) on a host with **KVM** (bare metal or an EC2
+`.metal` instance). It was verified booted only under **qemu TCG** (this build
+box had no `/dev/kvm`), which proves RT is live but gives no meaningful latency.
 
 ## Open items
 
 - **Secure Boot:** this locally-built `kernel-rt` is **unsigned** by Fedora's
-  key. It boots with Secure Boot disabled; production needs signing (MOK
-  enrollment or a Hummingbird signing key).
+  key. It boots with Secure Boot disabled (verified via the non-secboot OVMF
+  firmware); production needs signing (MOK enrollment or a Hummingbird signing
+  key).
 - **aarch64:** same SRPM + `--with rtonly` on a native arm64 box; not yet built.
+- **cyclictest latency:** boot was proven under qemu TCG (no KVM on the build
+  box); real worst-case-latency numbers need a KVM/`.metal` host + `rt-tests`
+  baked into the image.
 
 ## Productization: the `hummingbird/rt/` bootc-os variant
 

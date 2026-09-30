@@ -87,7 +87,7 @@ both COPR limitations: it is not third-party, and it is **not x86_64-only**.
   the `ros_core` closure is built); and actually BOOTING the image
   (bootc-image-builder qcow2 + SSH login). These remain COPR-only / pending.
 
-## Real-time (PREEMPT_RT) kernel — `images/bootc-os-rt` (kernel-rt built, image drafted)
+## Real-time (PREEMPT_RT) kernel — `images/bootc-os-rt` (kernel-rt built, image BUILT & BOOTED)
 
 Robotics/physical-AI needs bounded worst-case latency, so bootc-os needs a
 PREEMPT_RT kernel option. **No custom kernel packaging is required**: the Fedora
@@ -116,13 +116,42 @@ flavor (the ark lineage that also yields RHEL `kernel-rt` / AutoSD
   `kernel-rt-modules-core`, regen initramfs for the `+rt` kver, add RT kargs.d,
   `bootc container lint`. Stays bootable (inherits `/sbin/init`, bootloader,
   bootc). No Fedora repos added: the RT kernel shares the stock kernel's runtime
-  deps, already in the base.
+  deps, already in the base. **BUILT & lint-clean (14 checks / 0 warnings),
+  1.08 GB.**
+- **BOOTED & RT confirmed live (x86_64, 2026-09-30).** `bootc-image-builder`
+  → qcow2 (`--rootfs ext4`; bootc-os declares no default rootfs, and the bib
+  image lacked `mkfs.xfs`), booted under **qemu TCG** (this `c7i` box has NO
+  `/dev/kvm` — only `.metal` exposes it; AL2023's qemu also lacks user-mode
+  SLIRP net, so the login was driven over a serial unix socket). Proof from the
+  running VM: kernel banner **`Linux version 7.1.8-100.fc43.x86_64+rt … #1 SMP
+  PREEMPT_RT`** and `uname -v` = `#1 SMP PREEMPT_RT` — a kernel prints
+  `PREEMPT_RT` in its version string ONLY when `CONFIG_PREEMPT_RT=y`, so this is
+  the authoritative "RT is live" check. The RT kargs applied at deploy (kernel
+  cmdline shows `preempt=full nowatchdog`, from `kargs.d/10-realtime.toml`).
+  Image booted to login and powered off cleanly.
+  - ⚠️ **`/sys/kernel/realtime` is ABSENT** on this Fedora ark `kernel-rt`
+    (returned MISSING) — that sysfs file is a RHEL-`kernel-rt`-only convenience
+    patch, NOT part of mainline/Fedora PREEMPT_RT. Do NOT use it as the RT check
+    here; use `uname -v | grep PREEMPT_RT` (or the boot banner).
+  - `cyclictest` latency NOT measured: rt-tests isn't in the image, and TCG
+    software emulation gives meaningless timing anyway. Real latency numbers
+    need a native-x86_64 host with KVM (an EC2 `.metal` instance or bare metal).
+- **ROS 2 on the RT base — BUILT & verified (x86_64, 2026-09-30).**
+  `images/ros-core-rpms` now takes `--build-arg BASE_IMAGE`, so ROS 2 Jazzy
+  (our Hummingbird-built RPMs) layers straight onto `bootc-os-rt`:
+  `podman build --build-arg BASE_IMAGE=localhost/hummingbird-ros2-poc/bootc-os-rt:latest
+  -t hummingbird-ros2-poc/ros-core-rpms-rt:latest images/ros-core-rpms`. The
+  result (**1.56 GB**) ships BOTH the `+rt` kernel (`CONFIG_PREEMPT_RT=y`, single
+  modules dir, initramfs, empty `/boot`) AND ros-core (150 pkgs, `ros2` CLI);
+  `bootc container lint` 14/1 — a real-time robot OS with ROS 2 baked into the
+  immutable `/usr` layer.
 - **Open:** Secure Boot signing (self-built kernel-rt unsigned by Fedora's key —
-  boots only with SB off until signed); **aarch64** RT build (same SRPM + `--with
-  rtonly` on a native arm64 box); actually BUILDING/BOOTING the image +
-  `cyclictest` latency numbers. Productization = a `hummingbird/rt/` bootc-os
-  variant in the containers monorepo (MAIN_PACKAGES kernel swap) once kernel-rt
-  is published — see `images/bootc-os-rt/README.md`.
+  boots only with SB off until signed; verified booting with SB off via
+  non-secboot OVMF); **aarch64** RT build (same SRPM + `--with rtonly` on a
+  native arm64 box); **`cyclictest` latency numbers on a KVM/`.metal` host**.
+  Productization = a `hummingbird/rt/` bootc-os variant in the containers
+  monorepo (MAIN_PACKAGES kernel swap) once kernel-rt is published — see
+  `images/bootc-os-rt/README.md`.
 
 ## Established facts (verified during design)
 
