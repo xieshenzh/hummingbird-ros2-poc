@@ -62,19 +62,26 @@ RUN dnf -y install --setopt=install_weak_deps=0 createrepo_c \
     && KVER="$(ls /usr/lib/modules/ | grep -- '+rt' | head -1)" \
     && test -n "${KVER}" || (echo ">>>>> no +rt kernel found <<<<<" && false) \
     && dracut --force --no-hostonly "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}" \
-    # 5. Tidy up: remove the transient repo, RPMs and build tool.
+    # 5. Empty /boot: the kernel scriptlets (kernel-install) repopulate it, but
+    #    a bootc image keeps the kernel+initramfs ONLY under /usr/lib/modules
+    #    (/boot is managed at deploy time). The base image empties /boot too.
+    && find /boot -mindepth 1 -delete \
+    # 6. Tidy up: remove the transient repo, RPMs, build tool and scriptlet state.
     && dnf -y remove createrepo_c \
     && rm -rf /var/tmp/rt-rpms /etc/yum.repos.d/rt-local.repo \
     && dnf clean all \
-    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf
+    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf \
+              /var/lib/rpm-state
 
 # ── Real-time boot arguments ──
 # bootc merges kargs.d drop-ins into the boot loader entry at deploy time.
 COPY kargs.d/10-realtime.toml /usr/lib/bootc/kargs.d/10-realtime.toml
 
 # Validate the assembled image (kernel present, still a valid bootc container).
-# Not --fatal-warnings: a POC may carry cosmetic dnf-leftover warnings.
-RUN bootc container lint --no-truncate || true
+# --fatal-warnings (as the base uses): verified clean (14 checks / 0 warnings),
+# so any new warning — e.g. a repopulated /boot or leftover /var state — fails
+# the build rather than silently regressing.
+RUN bootc container lint --no-truncate --fatal-warnings
 
 # ENTRYPOINT / CMD are intentionally NOT overridden — the image inherits
 # CMD ["/sbin/init"] from bootc-os so it stays a valid, bootable bootc image.

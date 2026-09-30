@@ -11,6 +11,13 @@ The image stays a valid, bootable bootc image — it inherits `systemd`,
 `/sbin/init`, the bootloader and `bootc` from the base; only the kernel, its
 initramfs, and a `kargs.d` drop-in change.
 
+**Status (x86_64, 2026-09-30): BUILT & verified natively** on a `c7i`-class EC2
+box (rootful podman, no qemu). `bootc container lint` = 14 checks / 0 warnings;
+exactly one modules dir (`7.1.8-100.fc43.x86_64+rt`) with `CONFIG_PREEMPT_RT=y`,
+initramfs regenerated under `/usr/lib/modules`, `/boot` empty, RT kargs applied,
+stock kernel fully removed. **Image size 1.08 GB** (base bootc-os 909 MB + the
+RT kernel ~170 MB). Not yet booted (see Open items).
+
 ## Why real-time?
 
 Physical-AI / robotics workloads (motor control, sensor fusion, ROS 2 control
