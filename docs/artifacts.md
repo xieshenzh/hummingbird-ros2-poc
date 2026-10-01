@@ -44,12 +44,12 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 |---|---|---|
 | `bootc-os-rt:fc43-x86_64` (also `:latest`) | amd64 | 1.08 GB |
 | `bootc-os-rt:fc43-aarch64` | arm64 | 1.27 GB |
-| `bootc-os-rt:fc44` | arm64 | 1.53 GB |
-| `bootc-os-rt:fc44` (x86_64, on the EC2 box) | amd64 | 1.06 GB |
+| `bootc-os-rt:fc44-aarch64` | arm64 | 1.53 GB |
+| `bootc-os-rt:fc44-x86_64` | amd64 | 1.06 GB |
 | `ros-core-rpms-rt-chunked:fc43-x86_64` (also `:latest`) | amd64 | 1.19 GB |
 | `ros-core-rpms-rt-chunked:fc43-aarch64` | arm64 | 1.25 GB |
-| `ros-core-rpms-rt:fc44` | arm64 | 1.97 GB |
-| `ros-core-rpms-rt:fc44` (x86_64, on the EC2 box) | amd64 | 1.54 GB |
+| `ros-core-rpms-rt:fc44-aarch64` | arm64 | 1.97 GB |
+| `ros-core-rpms-rt:fc44-x86_64` | amd64 | 1.54 GB |
 
 ## Notes
 
