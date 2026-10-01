@@ -26,10 +26,12 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `ros-core-rpms-rt-fc44-x86_64.oci.tar.gz` | fc44 x86_64 RT + ros-core (1.54 GB image) |
 | `ros-core-rpms-rt-chunked.tar.gz` | fc43 x86_64 RT + ros-core (rechunked) |
 | `ros-core-rpms-rt-chunked-aarch64.tar.gz` | fc43 aarch64 RT + ros-core (rechunked) |
+| `ros-core-rpms-rt-chunked-fc44-x86_64.tar.gz` | fc44 x86_64 RT + ros-core (rechunked 1.54→1.18 GB; kernel in its own 75.3 MB layer) |
 | `bootc-os-rt.qcow2.gz` | fc43 x86_64 base qcow2 |
 | `bootc-os-rt-ros-core-aarch64.qcow2.gz` | fc43 aarch64 ros-core qcow2 |
 | `bootc-os-rt-fc44-aarch64.qcow2.gz` | fc44 aarch64 base qcow2 |
 | `ros-core-rpms-rt-fc44-aarch64.qcow2.gz` | fc44 aarch64 ros-core qcow2 |
+| `bootc-os-rt-fc44-x86_64.qcow2.gz` | fc44 x86_64 base qcow2 (the one booted for the login RT proof) |
 | `serial-transcript-aarch64.txt` | fc43 aarch64 boot proof transcript |
 | `serial-transcript-fc44-aarch64.txt` | fc44 aarch64 boot proof (banner `…aarch64+rt … PREEMPT_RT` + RT cmdline) |
 | `serial-transcript-fc44-aarch64-userspace.txt` | fc44 aarch64 **userspace** proof — oneshot unit ran `uname -r`/`uname -v` (`#1 SMP PREEMPT_RT`) on the live RT kernel (x86_64-parity, TCG) |
@@ -48,6 +50,7 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `bootc-os-rt:fc44-x86_64` | amd64 | 1.06 GB |
 | `ros-core-rpms-rt-chunked:fc43-x86_64` (also `:latest`) | amd64 | 1.19 GB |
 | `ros-core-rpms-rt-chunked:fc43-aarch64` | arm64 | 1.25 GB |
+| `ros-core-rpms-rt-chunked:fc44-x86_64` | amd64 | 1.18 GB |
 | `ros-core-rpms-rt:fc44-aarch64` | arm64 | 1.97 GB |
 | `ros-core-rpms-rt:fc44-x86_64` | amd64 | 1.54 GB |
 
