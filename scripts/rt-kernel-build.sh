@@ -2,18 +2,21 @@
 # Build a PREEMPT_RT kernel from the pinned Fedora kernel SRPM used by
 # Hummingbird bootc-os, via `--with rtonly` (builds ONLY kernel-rt*).
 #
-# Runs rpmbuild inside a rootful fedora:43 podman container so the host distro
-# (AL2023) is irrelevant. Native x86_64 only (no qemu). Intended to run on a
-# >=16 vCPU / >=30 GB box.
+# Runs rpmbuild inside a rootful fedora podman container so the host distro
+# (AL2023) is irrelevant. Build NATIVELY on the target arch (no qemu). Intended
+# to run on a >=16 vCPU / >=30 GB box.
 #
 # Env:
 #   WITH_DEBUGINFO=1  build the debuginfo subpackages too (production build;
 #                     slower, more RAM/disk). Default: omit for a fast pass.
 #   SRPM=...          override the SRPM filename (must sit in $WORK).
+#   BUILDER=...       build-container image; MATCH it to the SRPM's Fedora release
+#                     (fedora:43 for *.fc43, fedora:44 for *.fc44). Default fedora:43.
 set -euo pipefail
 
 WORK="${WORK:-$HOME/rtbuild}"
 SRPM="${SRPM:-kernel-7.1.8-100.fc43.src.rpm}"
+BUILDER="${BUILDER:-fedora:43}"
 WITH_DEBUGINFO="${WITH_DEBUGINFO:-0}"
 if [ "$WITH_DEBUGINFO" = "1" ]; then
   DBG_FLAG=""            # let the spec build debuginfo (default)
@@ -22,9 +25,9 @@ else
 fi
 cd "$WORK"
 
-echo "=== $(date -u) rt-kernel-build start (SRPM=$SRPM WITH_DEBUGINFO=$WITH_DEBUGINFO) ==="
+echo "=== $(date -u) rt-kernel-build start (SRPM=$SRPM BUILDER=$BUILDER WITH_DEBUGINFO=$WITH_DEBUGINFO) ==="
 
-sudo podman run --rm -v "$WORK":/work:z -w /work fedora:43 bash -euxo pipefail -c '
+sudo podman run --rm -v "$WORK":/work:z -w /work "$BUILDER" bash -euxo pipefail -c '
   SRPM="'"$SRPM"'"
   DBG_FLAG="'"$DBG_FLAG"'"
   dnf -y install rpm-build dnf-plugins-core rpmdevtools cpio >/dev/null

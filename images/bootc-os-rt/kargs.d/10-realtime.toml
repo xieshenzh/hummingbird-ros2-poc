@@ -3,11 +3,15 @@
 # bootc merges every /usr/lib/bootc/kargs.d/*.toml into the boot loader entry at
 # deploy time (alongside the base's 00-base.toml console args).
 #
-# CONSERVATIVE DEFAULTS ONLY. The PREEMPT_RT kernel already threads IRQs and
-# fully preempts in-kernel; the aggressive CPU-isolation arguments (isolcpus /
+# CONSERVATIVE DEFAULTS ONLY — intrinsic RT tuning that is safe on any target.
+# These belong in the base RT image because they are inseparable from running an
+# RT kernel at all. Robot-WORKLOAD-specific tuning (CPU isolation) does NOT go
+# here: per the base-consistency principle (docs/realtime-kernel.md) the base
+# stays consistent with upstream bootc-os and any robot customization lives in
+# the ros2/robot image layer. The aggressive CPU-isolation arguments (isolcpus /
 # nohz_full / rcu_nocbs) are hardware- and workload-specific and can make a
-# machine unusable if the CPU ranges are wrong, so they are left as a commented
-# template below — set the ranges for your target and move them into `kargs`.
+# machine unusable if the CPU ranges are wrong, so they are shown below only as a
+# template to copy into the ros2 image's OWN kargs.d drop-in.
 kargs = [
   # Keep the dynamic-preempt model at full preemption too (PREEMPT_DYNAMIC is
   # also enabled in the RT build; harmless and explicit on an RT kernel).
@@ -17,10 +21,11 @@ kargs = [
   "nowatchdog",
 ]
 
-# ── Aggressive isolation template (EXAMPLE — do not enable blindly) ──
-# For an 8-core target dedicating cores 2-7 to real-time work and keeping the
-# housekeeping load on cores 0-1. Merge these into `kargs` above (a TOML file
-# may only define `kargs` once) after adjusting the CPU ranges:
+# ── Aggressive isolation template — belongs in the ros2/robot image layer ──
+# EXAMPLE, do not enable blindly. For an 8-core robot dedicating cores 2-7 to
+# real-time work and keeping the housekeeping load on cores 0-1. Put these in a
+# kargs.d/*.toml drop-in inside the ros2/robot image (NOT this base file), after
+# adjusting the CPU ranges to the target robot:
 #
 #   "isolcpus=managed_irq,domain,2-7",  # keep the scheduler + managed IRQs off 2-7
 #   "nohz_full=2-7",                    # stop the scheduler tick on isolated CPUs
