@@ -87,7 +87,7 @@ both COPR limitations: it is not third-party, and it is **not x86_64-only**.
   the `ros_core` closure is built); and actually BOOTING the image
   (bootc-image-builder qcow2 + SSH login). These remain COPR-only / pending.
 
-## Real-time (PREEMPT_RT) kernel — `images/bootc-os-rt` (kernel-rt built, image BUILT & BOOTED)
+## Real-time (PREEMPT_RT) kernel — `images/bootc-os-rt` (kernel-rt built, image BUILT & BOOTED on BOTH arches)
 
 Robotics/physical-AI needs bounded worst-case latency, so bootc-os needs a
 PREEMPT_RT kernel option. **No custom kernel packaging is required**: the Fedora
@@ -145,13 +145,60 @@ flavor (the ark lineage that also yields RHEL `kernel-rt` / AutoSD
   modules dir, initramfs, empty `/boot`) AND ros-core (150 pkgs, `ros2` CLI);
   `bootc container lint` 14/1 — a real-time robot OS with ROS 2 baked into the
   immutable `/usr` layer.
+- **aarch64 RT — BUILT, ROS-layered & BOOTED (2026-09-30), parity with x86_64.**
+  Done NATIVELY on a Graviton EC2 box (no qemu for the build): same
+  `kernel-7.1.8-100.fc43.src.rpm` + `scripts/rt-kernel-build.sh` (fast,
+  `--without debuginfo`) → **16 `kernel-rt-*` RPMs** — note the aarch64 SRPM emits
+  TWO flavors, the standard 4k-page `aarch64+rt` AND a 64k-page `aarch64+rt-64k`
+  (8 subpkgs each). The image install set is the **4k** `kernel-rt-core` +
+  `kernel-rt-modules-core`. `bootc-os-rt` aarch64 **1.27 GB** (lint 14/1);
+  `ros-core-rpms-rt` aarch64 **1.71 GB** (RT kernel intact, 150 ros2 pkgs,
+  **default Fast DDS pub/sub round-trips**); rechunked **1.25 GB / 64 layers**.
+  - **BOOTED & RT confirmed live (aarch64, 2026-09-30).** qcow2 via
+    `bootc-image-builder` (`--rootfs ext4`), booted under **qemu-system-aarch64
+    TCG** (`-machine virt -accel tcg -cpu max`, pflash
+    `/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw` RO + a writable copy of
+    `vars-template-pflash.raw`), login driven over the serial unix socket by
+    `scripts/rt-serial-verify.py` (same no-KVM/no-net path as x86_64). Proof from
+    the running VM: `uname -r` = **`7.1.8-100.fc43.aarch64+rt`**, `uname -v` =
+    **`#1 SMP PREEMPT_RT`**, `/proc/cmdline` has `vmlinuz-...aarch64+rt …
+    preempt=full nowatchdog`, `/sys/kernel/realtime` MISSING (as expected),
+    powered off cleanly. ⚠️ The transcript regex missed the markers (fc43 bash
+    emits OSC-3008 shell-integration escapes that pollute the marker lines) — read
+    the raw transcript for the proof; a future `rt-serial-verify.py` tweak could
+    strip `\x1b]...` OSC sequences before matching. Artifacts (gitignored) in
+    `artifacts/`: `bootc-os-rt-ros-core-aarch64.qcow2.gz`,
+    `ros-core-rpms-rt-chunked-aarch64.tar.gz`, `serial-transcript-aarch64.txt`,
+    and the 16 RPMs under `rt-kernel-rpms/7.1.8-100.fc43.aarch64/`.
+- **⚠️ Base version skew: bootc-os moved fc43 → fc44 mid-build (2026-09-30).**
+  While the RT work ran, `quay.io/hummingbird-community/bootc-os:latest` was
+  rebuilt (≈15:10 UTC) and bumped its stock generic kernel from
+  **`7.1.8-100.fc43`** to **`7.2.7-200.fc44`** on BOTH arches at once (verified:
+  x86_64 base = `7.2.7-200.fc44.x86_64`, aarch64 = `…fc44.aarch64`). The new base
+  still ships ONLY a generic kernel (no RT). Our RT kernel was built from the now
+  stale **fc43** SRPM, so `bootc-os-rt` currently REGRESSES the base's kernel back
+  to `7.1.8-100.fc43+rt`. **Plan (deferred to 2026-10-01, both platforms):**
+  rebuild kernel-rt from **`kernel-7.2.7-200.fc44.src.rpm`** (`--with rtonly`) on
+  native x86_64 AND native aarch64, then rebuild both image stacks.
+  - **Do the ROS 2 RPMs also need rebuilding for fc44? Only if fc44 breaks an
+    ABI** — kernel-rt and the ROS RPMs are independent (ROS touches no kernel).
+    The 105 noarch `ros-jazzy-*` are fine regardless; the 57 compiled ones break
+    only if fc44 bumps (a) the Python minor version (they target
+    `python3.14`/3.14-ABI C-extensions — fc44 most likely STAYS 3.14, 3.15 not
+    until ~Oct 2026) or (b) a linked C++ soname (`boost` 1.90 is the classic
+    breaker, plus `tinyxml2`/`console-bridge`/`spdlog-1.17`). Cheap pre-check
+    before rebuilding ROS: `dnf install --assumeno ros-jazzy-ros-core` on the fc44
+    base + confirm `python3 --version` and the compiled RPMs' `Requires` sonames.
+    If unchanged, the existing ROS RPMs install on fc44 as-is and only kernel-rt
+    needs the rebuild.
 - **Open:** Secure Boot signing (self-built kernel-rt unsigned by Fedora's key —
   boots only with SB off until signed; verified booting with SB off via
-  non-secboot OVMF); **aarch64** RT build (same SRPM + `--with rtonly` on a
-  native arm64 box); **`cyclictest` latency numbers on a KVM/`.metal` host**.
-  Productization = a `hummingbird/rt/` bootc-os variant in the containers
-  monorepo (MAIN_PACKAGES kernel swap) once kernel-rt is published — see
-  `images/bootc-os-rt/README.md`.
+  non-secboot OVMF on x86_64 and non-secboot aarch64 pflash); **fc44 rebuild of
+  kernel-rt + images on both arches** (see skew note above); **`cyclictest`
+  latency numbers on a KVM/`.metal` host** (both arches — TCG timing is
+  meaningless). Productization = a `hummingbird/rt/` bootc-os variant in the
+  containers monorepo (MAIN_PACKAGES kernel swap) once kernel-rt is published —
+  see `images/bootc-os-rt/README.md`.
 
 ## Established facts (verified during design)
 
