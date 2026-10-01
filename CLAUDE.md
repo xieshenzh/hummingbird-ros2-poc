@@ -34,11 +34,13 @@ dnf/Fedora.
 | `sim-bundle` bridge/simulation/gazebo | n/a (COPR) | ✅ built + tested (native) |
 | native `simulation`/`gazebo` | ❌ boost skew | ❌ boost skew → use sim-bundle |
 | `bootc-os-rt` (PREEMPT_RT) fc43 | ✅ built + BOOTED | ✅ built + BOOTED |
-| `bootc-os-rt` fc44 | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) | ⏳ not started |
+| `bootc-os-rt` fc44 | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) | ✅ built + BOOTED + RT verified under TCG (banner + RT kargs) |
 
 - **Base moved fc43 → fc44 (2026-09-30):** `bootc-os:latest` stock kernel is now
-  `7.2.7-200.fc44` (generic-only). fc44 aarch64 RT rebuilt 2026-10-01; fc44 x86_64
-  still to do. The fc43 ROS RPMs are fc44-compatible (no rebuild). See
+  `7.2.7-200.fc44` (generic-only). fc44 RT rebuilt on **both** arches 2026-10-01 —
+  a matched **7.2.7** pair pinned to the same base child digest (the base had since
+  bumped to 7.2.8; both RT images pin 7.2.7 for internal consistency). The fc43 ROS
+  RPMs are fc44-compatible (no rebuild). See
   [`docs/realtime-kernel.md`](docs/realtime-kernel.md).
 - All built images + RT kernel RPMs are archived in `artifacts/` (gitignored) and
   loaded in local podman — inventory in [`docs/artifacts.md`](docs/artifacts.md).
