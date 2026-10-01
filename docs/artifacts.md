@@ -35,6 +35,7 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `serial-transcript-fc44-aarch64-userspace.txt` | fc44 aarch64 **userspace** proof — oneshot unit ran `uname -r`/`uname -v` (`#1 SMP PREEMPT_RT`) on the live RT kernel (x86_64-parity, TCG) |
 | `serial-transcript-fc44-aarch64-login.txt` | fc44 aarch64 **full boot → interactive getty login → `uname`** (`#1 SMP PREEMPT_RT`), after the `/boot` `nofail` fstab fix — complete x86_64 parity (TCG) |
 | `serial-transcript-fc44-x86_64.txt` | fc44 x86_64 boot proof (banner `…x86_64+rt … #1 SMP PREEMPT_RT` + RT cmdline `preempt=full nowatchdog`, TCG) |
+| `serial-transcript-fc44-x86_64-login.txt` | fc44 x86_64 **full boot → interactive getty login → `uname`** (`#1 SMP PREEMPT_RT`, verify exit 0) — complete parity, TCG |
 | `kbuild-fc44.log` | fc44 kernel-rt build log |
 
 ## Loaded in local podman

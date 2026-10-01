@@ -20,7 +20,7 @@ that SAME SRPM with the spec's own `--with rtonly` toggle
 | fc43 | x86_64 | ✅ 2026-09-30 | ✅ 1.08 GB | ✅ TCG | ✅ 1.56 GB |
 | fc43 | aarch64 | ✅ 2026-09-30 | ✅ 1.27 GB | ✅ TCG | ✅ 1.71 GB (rechunked 1.25) |
 | fc44 | aarch64 | ✅ 2026-10-01 | ✅ 1.53 GB | ✅ TCG (full boot → login → `uname`) | ✅ 1.97 GB |
-| fc44 | x86_64 | ✅ 2026-10-01 | ✅ 1.06 GB | ✅ TCG (banner + RT kargs) | ✅ 1.54 GB |
+| fc44 | x86_64 | ✅ 2026-10-01 | ✅ 1.06 GB | ✅ TCG (full boot → login → `uname`) | ✅ 1.54 GB |
 
 The authoritative live RT check is **`uname -v | grep PREEMPT_RT`** (printed only
 when `CONFIG_PREEMPT_RT=y`). ⚠️ `/sys/kernel/realtime` is ABSENT on Fedora ark
@@ -151,14 +151,22 @@ podman + fedora:44). Closes the last matrix cell → **both arches are now a mat
   DDS pub/sub round-trip PASS — received `RTFC44OK`). Again confirms the
   fc43-built ROS RPMs are fc44-compatible (no rebuild).
 - **BOOTED & RT confirmed live (2026-10-01).** `bootc-image-builder` → qcow2
-  (669 MB, `--rootfs ext4`), booted under **qemu x86_64 TCG** (no `/dev/kvm`),
-  capture-only serial. Banner proof
-  (`artifacts/serial-transcript-fc44-x86_64.txt`):
-  `Linux version 7.2.7-200.fc44.x86_64+rt … #1 SMP PREEMPT_RT` (the authoritative
-  `CONFIG_PREEMPT_RT=y` check); kernel cmdline booted
-  `vmlinuz-7.2.7-200.fc44.x86_64+rt` with the RT kargs applied at deploy
-  (`preempt=full nowatchdog`). x86_64 TCG is fast and (unlike aarch64) never hits
-  the `/boot` device-timeout, so no fstab aid was needed.
+  (669 MB, `--rootfs ext4`), booted under **qemu x86_64 TCG** (no `/dev/kvm`).
+  RT proven at two levels:
+  1. **Banner + cmdline**, capture-only serial
+     (`artifacts/serial-transcript-fc44-x86_64.txt`):
+     `Linux version 7.2.7-200.fc44.x86_64+rt … #1 SMP PREEMPT_RT` (the
+     authoritative `CONFIG_PREEMPT_RT=y` check); kernel cmdline booted
+     `vmlinuz-7.2.7-200.fc44.x86_64+rt` with the RT kargs applied at deploy
+     (`preempt=full nowatchdog`).
+  2. **Full clean boot → interactive getty `login:` → `uname`** (complete parity
+     with fc43 x86_64 / fc44 aarch64), driven over the serial socket by
+     `scripts/rt-serial-verify.py`
+     (`artifacts/serial-transcript-fc44-x86_64-login.txt`): logged in as `rt`
+     → `[rt@localhost ~]$`, `uname -r` = `7.2.7-200.fc44.x86_64+rt`, `uname -v`
+     = `#1 SMP PREEMPT_RT`, verify exit 0.
+  x86_64 TCG is fast and (unlike aarch64) never hits the `/boot` device-timeout,
+  so no fstab aid was needed to reach getty.
 - **`enable-repos.sh` robustness fix (surfaced here):** the old gpgkey pointed at
   `src.fedoraproject.org` dist-git raw, which dnf5 fetches once with no retry at
   transaction time — a single 503 (seen live) fails the build. Now the per-release
@@ -207,9 +215,9 @@ fc44 RT stacks are the matched **7.2.7** pair pinned to the same base child dige
   non-secboot OVMF on x86_64 and non-secboot aarch64 pflash).
 - ~~fc44 x86_64 kernel-rt + image stack~~ **DONE 2026-10-01** — kernel-rt +
   `bootc-os-rt:fc44` (1.06 GB) + `ros-core-rpms-rt:fc44` (1.54 GB), booted under
-  TCG with the `PREEMPT_RT` banner + RT kargs
-  (`artifacts/serial-transcript-fc44-x86_64.txt`). Both arches now the matched
-  7.2.7 pair.
+  TCG with the `PREEMPT_RT` banner + RT kargs and a full boot → getty login →
+  `uname` (`artifacts/serial-transcript-fc44-x86_64{,-login}.txt`). Both arches
+  now the matched 7.2.7 pair.
 - ~~fc44 aarch64 interactive getty login~~ **DONE 2026-10-01** — full clean boot →
   serial `login:` → interactive `uname` = `#1 SMP PREEMPT_RT`
   (`artifacts/serial-transcript-fc44-aarch64-login.txt`), after the `/boot`

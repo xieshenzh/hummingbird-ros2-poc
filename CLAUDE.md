@@ -34,7 +34,7 @@ dnf/Fedora.
 | `sim-bundle` bridge/simulation/gazebo | n/a (COPR) | ✅ built + tested (native) |
 | native `simulation`/`gazebo` | ❌ boost skew | ❌ boost skew → use sim-bundle |
 | `bootc-os-rt` (PREEMPT_RT) fc43 | ✅ built + BOOTED | ✅ built + BOOTED |
-| `bootc-os-rt` fc44 | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) | ✅ built + BOOTED + RT verified under TCG (banner + RT kargs) |
+| `bootc-os-rt` fc44 | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) |
 
 - **Base moved fc43 → fc44 (2026-09-30):** `bootc-os:latest` stock kernel is now
   `7.2.7-200.fc44` (generic-only). fc44 RT rebuilt on **both** arches 2026-10-01 —
