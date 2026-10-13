@@ -156,9 +156,30 @@ existing 7.2.7-200.fc44 kernel-rt RPMs from `artifacts/`:
   target image itself (fully native, no external builder) + a thin overlay that
   adds a serial-login user (and `realtime-tests` for cyclictest — note the package
   is `realtime-tests`, NOT `rt-tests`, which is Request Tracker).
-- **Still open:** the entire **x86_64** pass (native build of `rcl-logging-spdlog`
-  + 3 images + boot). The HB fc44 x86_64 RT image already boot-proved PREEMPT_RT;
-  the fedora-bootc x86_64 variant is untested.
+## Results — x86_64 PROVEN on EC2 (2026-10-13)
+
+Done natively on an EC2 **`c6i.2xlarge`** (8 vCPU / 15 GB, AL2023, no `/dev/kvm`).
+Base `fedora-bootc:44` x86_64 verified: python 3.14.8, spdlog 1.15.3, stock kernel
+had drifted to `7.2.9-201.fc44` (our kernel-rt 7.2.7 still swaps in fine).
+
+- **`rcl-logging-spdlog` rebuilt natively on fc44 x86** → requires
+  `libspdlog.so.1.15` (same one-package fix as aarch64).
+- **`ros-core-rpms` on fedora-bootc:44**: builds; 150 pkgs; base `spdlog-1.15`;
+  **native-container Fast-DDS pub/sub round-trip PASS** (received `X86_FASTDDS_OK`)
+  — run as a native container (real x86 CPU), the strongest ROS runtime proof.
+- **`bootc-os-rt` + `ros-core-rpms-rt`**: build; lint **14/0**; only
+  `7.2.7-200.fc44.x86_64+rt` kernel, stock removed; 155 ROS pkgs.
+- **BOOTED + PREEMPT_RT confirmed**: `bootc install to-disk` → raw disk → booted
+  under **qemu x86_64 TCG** (no KVM on c6i.2xlarge) → serial getty login as `rt` →
+  banner `7.2.7-200.fc44.x86_64+rt … #1 SMP PREEMPT_RT`, `uname -r/-v` match,
+  rt-serial-verify rc=0. Transcript: `artifacts/serial-fedora44-x86_64.txt`.
+- **Not done on x86:** cyclictest (c6i.2xlarge has no KVM → TCG timing is noise;
+  use a `*.metal` if latency numbers are needed).
+
+**Both arches now prove the base switch end-to-end.** The ROS 2 + PREEMPT_RT stack
+builds, installs, runs (Fast-DDS), and boots as a bootc image on plain
+`fedora/fedora-bootc:44`, with exactly one ROS package rebuilt per base
+(`rcl-logging-spdlog` → base-native spdlog 1.15).
 
 ## Runbook
 
@@ -211,12 +232,12 @@ BASE=quay.io/fedora/fedora-bootc@sha256:10ead291e5531900951775c75b12fd3b08bc6bc1
 
 | Step | aarch64 | x86_64 |
 |---|---|---|
-| rcl-logging-spdlog rebuilt on fc44 (→ libspdlog.so.1.15) | ✅ | ☐ (needs native build) |
-| ros-core-rpms on fedora-bootc:44 (install + ros2 + Fast-DDS) | ✅ | ☐ (EC2) |
-| kernel-rt for RT base | ✅ reused 7.2.7 fc44 RPMs | ☐ reuse 7.2.7 or rebuild |
-| bootc-os-rt:fedora44 built + lint 14/0 | ✅ | ☐ (EC2) |
-| ros-core-rpms-rt:fedora44 built + lint 14/0 | ✅ | ☐ (EC2) |
-| booted + PREEMPT_RT confirmed | ✅ EC2 c7g.metal (KVM) + cyclictest | ☐ (EC2) |
+| rcl-logging-spdlog rebuilt on fc44 (→ libspdlog.so.1.15) | ✅ | ✅ (native on EC2 c6i.2xlarge) |
+| ros-core-rpms on fedora-bootc:44 (install + ros2 + Fast-DDS) | ✅ | ✅ (native-container Fast-DDS) |
+| kernel-rt for RT base | ✅ reused 7.2.7 fc44 RPMs | ✅ reused 7.2.7 fc44 RPMs |
+| bootc-os-rt:fedora44 built + lint 14/0 | ✅ | ✅ |
+| ros-core-rpms-rt:fedora44 built + lint 14/0 | ✅ | ✅ |
+| booted + PREEMPT_RT confirmed | ✅ EC2 c7g.metal (KVM) + cyclictest | ✅ EC2 c6i.2xlarge (TCG) |
 
 ## Expected deltas / watch-items
 
