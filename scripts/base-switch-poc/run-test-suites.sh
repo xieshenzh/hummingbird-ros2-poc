@@ -4,7 +4,7 @@
 # ros-test-dev container with a persistent /ws workspace. See docs/base-switch-poc.md.
 #
 #   podman run --rm -v $PWD/ws:/ws:z -w /ws ros-test-dev bash run-test-suites.sh
-set -uo pipefail
+set -o pipefail   # NOT -u: ROS setup.bash references unbound vars (COLCON_TRACE)
 source /usr/lib64/ros-jazzy/setup.bash
 mkdir -p /ws/src && cd /ws
 

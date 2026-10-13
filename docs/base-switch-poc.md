@@ -207,9 +207,18 @@ installed RPM underlay, the test-support packages missing from `ros_core`:
 deps race otherwise). Then build + `colcon test` the `ros2/system_tests` packages
 (`test_rclcpp`, `test_communication`). Scripts: `scripts/base-switch-poc/`.
 
+### x86_64 (2026-10-13) — same result
+
+Replicated natively on the EC2 `c6i.2xlarge` (reused the x86 box; built the same
+colcon overlay on `ros-core-rpms-rt:fedora44-x86`). **`test_rclcpp` +
+`test_communication`: 1075 tests, 0 errors, 0 FUNCTIONAL failures, 11 `uncrustify`
+style-linter failures, 82 skipped** — byte-for-byte the same profile as aarch64
+(all failures cosmetic lint; functional tests pass across both Fast-DDS RMWs).
+Log: `artifacts/ros2-test-suites-x86_64.log`. **Both arches pass the ROS 2 system
+test suites on the switched base.**
+
 - **Not yet run:** `rcl`/`rclcpp`/`rclpy` **internal** unit suites (would rebuild
-  those libs from source — tests source-at-version, not the RPM binary), and the
-  **x86_64** test-suite replication (needs the x86 box).
+  those libs from source — tests source-at-version, not the RPM binary).
 
 ## Runbook
 
