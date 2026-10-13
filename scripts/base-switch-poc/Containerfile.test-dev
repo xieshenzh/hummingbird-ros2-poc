@@ -1,0 +1,14 @@
+# Dev/test overlay for running ROS 2 test suites against the installed RPMs.
+# Build:  podman build --build-arg BASE=localhost/hummingbird-ros2-poc/ros-core-rpms-rt:fedora44-<arch> \
+#                      -t ros-test-dev -f Containerfile.test-dev .
+ARG BASE=localhost/hummingbird-ros2-poc/ros-core-rpms-rt:fedora44-aarch64
+FROM ${BASE}
+RUN dnf -y install \
+      cmake gcc gcc-c++ make git patch which \
+      python3-pip python3-pytest python3-pytest-cov python3-setuptools python3-wheel \
+      python3-empy python3-lark python3-numpy python3-devel \
+      gtest-devel gmock-devel \
+      google-benchmark-devel openssl-devel lttng-ust-devel \
+    && (dnf -y install python3-colcon-common-extensions python3-vcstool \
+        || pip install --break-system-packages colcon-common-extensions vcstool) \
+    && dnf clean all

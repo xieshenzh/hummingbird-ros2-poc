@@ -181,6 +181,36 @@ builds, installs, runs (Fast-DDS), and boots as a bootc image on plain
 `fedora/fedora-bootc:44`, with exactly one ROS package rebuilt per base
 (`rcl-logging-spdlog` → base-native spdlog 1.15).
 
+## ROS 2 test suites — aarch64 (2026-10-13)
+
+Ran the upstream ROS 2 **integration/system test suites against the installed
+RPMs** (built only the test packages, not the libs, so this tests what we ship)
+natively on aarch64 via a colcon overlay on `ros-core-rpms-rt:fedora44-aarch64`.
+
+- **`test_rclcpp` + `test_communication`: 1075 tests, 0 errors, 0 FUNCTIONAL
+  failures, 11 style-linter (`uncrustify`) failures, 82 skipped.** Functional
+  tests pass across **both** `rmw_fastrtps_cpp` and `rmw_fastrtps_dynamic_cpp`:
+  pub/sub, services, parameters, client scope, multi-node, node naming,
+  sigint/sigterm handlers. The 11 failures are all `uncrustify` (C++ formatting
+  linter — installed uncrustify differs from ROS CI's pin; cosmetic, not a defect).
+
+### Dependency recipe (hard-won — the ros_core RPMs lack the test deps)
+
+A dev overlay (`colcon`, `cmake`, `gcc`, `gtest/gmock-devel`, `python3-pytest`,
+plus **`google-benchmark-devel`, `openssl-devel`, `lttng-ust-devel`**) on top of
+the ROS image, then a colcon workspace (`--merge-install`) that builds, on the
+installed RPM underlay, the test-support packages missing from `ros_core`:
+`python_cmake_module`, `ament_cmake_vendor_package`, `ament_cmake_google_benchmark`
+(extracted from `ament/ament_cmake`), `test_interface_files`, `mimick_vendor`,
+`osrf_testing_tools_cpp`, `performance_test_fixture`, `test_msgs` (from
+`ros2/rcl_interfaces`). Build the cmake-support pkgs first (undeclared transitive
+deps race otherwise). Then build + `colcon test` the `ros2/system_tests` packages
+(`test_rclcpp`, `test_communication`). Scripts: `scripts/base-switch-poc/`.
+
+- **Not yet run:** `rcl`/`rclcpp`/`rclpy` **internal** unit suites (would rebuild
+  those libs from source — tests source-at-version, not the RPM binary), and the
+  **x86_64** test-suite replication (needs the x86 box).
+
 ## Runbook
 
 Set the pin once:
