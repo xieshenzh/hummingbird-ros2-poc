@@ -45,11 +45,16 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
 # ── Package sources ──
-# bootc-os already enables the Hummingbird repo (public-hummingbird-*-rpms),
-# which provides the Hummingbird-built system libraries our ROS RPMs link
-# against (notably spdlog-1.17, which plain Fedora does not ship — Fedora has
-# 1.15). enable-repos.sh adds the stock Fedora repos that bootc-os omits (our
-# ROS RPMs still need ordinary Fedora libraries). No COPR is used here.
+# This image is base-agnostic (ARG BASE_IMAGE):
+#   * On Hummingbird bootc-os: the base enables the Hummingbird repo
+#     (public-hummingbird-*-rpms), which provides spdlog-1.17 (Fedora ships only
+#     1.15) and other Hummingbird-built libraries. enable-repos.sh adds the
+#     stock Fedora repos that bootc-os omits.
+#   * On fedora-bootc:44 (base-switch PoC): the Fedora repos already ship, so
+#     enable-repos.sh is a no-op — but there is no Hummingbird repo, so the
+#     load-bearing spdlog-1.17 must be staged into the local ROS repo (drop the
+#     RPM into rpms/; createrepo_c picks it up). See docs/base-switch-poc.md.
+# No COPR is used here either way.
 COPY enable-repos.sh /tmp/enable-repos.sh
 RUN bash /tmp/enable-repos.sh && rm -f /tmp/enable-repos.sh
 
@@ -70,7 +75,7 @@ RUN dnf -y install --setopt=install_weak_deps=0 createrepo_c \
     && dnf -y remove createrepo_c \
     && rm -rf /var/tmp/ros-local-rpms /etc/yum.repos.d/ros-local.repo \
     && dnf clean all \
-    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf
+    && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf /var/lib/dnf/repos
 
 # ── Environment setup ──
 # Our RPMs install setup scripts under /usr/lib64/ros-${ROS_DISTRO} (same FHS

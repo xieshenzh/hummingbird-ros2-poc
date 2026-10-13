@@ -14,9 +14,12 @@
 #                     (fedora:43 for *.fc43, fedora:44 for *.fc44). Default fedora:43.
 set -euo pipefail
 
+# Defaults track the current fc44 base kernel (7.2.8-200.fc44 on both the
+# Hummingbird bootc-os and fedora-bootc:44 bases, verified 2026-10-07). Override
+# SRPM/BUILDER to match whatever base you pin. (The fc43 7.1.8 build is superseded.)
 WORK="${WORK:-$HOME/rtbuild}"
-SRPM="${SRPM:-kernel-7.1.8-100.fc43.src.rpm}"
-BUILDER="${BUILDER:-fedora:43}"
+SRPM="${SRPM:-kernel-7.2.8-200.fc44.src.rpm}"
+BUILDER="${BUILDER:-fedora:44}"
 WITH_DEBUGINFO="${WITH_DEBUGINFO:-0}"
 if [ "$WITH_DEBUGINFO" = "1" ]; then
   DBG_FLAG=""            # let the spec build debuginfo (default)

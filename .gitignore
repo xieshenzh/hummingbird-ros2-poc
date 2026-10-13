@@ -20,3 +20,5 @@ tmp/
 
 # Large binary build artifacts (RT kernel RPMs, chunked image tarball, qcow2)
 artifacts/
+# base-switch PoC local scratch (rebuilt RPMs, swapped repo)
+.poc-scratch/

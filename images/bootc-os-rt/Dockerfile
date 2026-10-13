@@ -71,7 +71,7 @@ RUN dnf -y install --setopt=install_weak_deps=0 createrepo_c \
     && rm -rf /var/tmp/rt-rpms /etc/yum.repos.d/rt-local.repo \
     && dnf clean all \
     && rm -rf /var/cache/* /var/log/dnf* /var/log/hawkey.log /run/dnf \
-              /var/lib/rpm-state
+              /var/lib/rpm-state /var/lib/dnf/repos
 
 # ── Real-time boot arguments ──
 # bootc merges kargs.d drop-ins into the boot loader entry at deploy time.

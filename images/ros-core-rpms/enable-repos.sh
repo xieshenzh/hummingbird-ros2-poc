@@ -1,28 +1,44 @@
 #!/usr/bin/env bash
-# Add the stock Fedora repos on bootc-os for the Hummingbird ROS 2 RPMs.
+# Ensure the stock Fedora repos are available for the Hummingbird ROS 2 RPMs.
 #
-# Unlike images/ros-core/enable-repos.sh this does NOT add any COPR: the ROS 2
-# packages come from the local repo of our own Hummingbird-built RPMs (see the
-# Dockerfile), and the Hummingbird-built system libraries they link against
-# (e.g. spdlog-1.17) come from the Hummingbird repo that bootc-os already
-# enables (public-hummingbird-*-rpms). All that is missing is plain Fedora.
+# This image is base-agnostic (ARG BASE_IMAGE). It supports BOTH:
+#   * Hummingbird bootc-os  — ships ONLY the Hummingbird repo, NOT the stock
+#     Fedora repos, so they must be added here or the ROS closure's ordinary
+#     Fedora libraries (gflags, cli11, console-bridge, protobuf, ...) will not
+#     resolve. (It also provides spdlog-1.17 via the Hummingbird repo.)
+#   * Fedora fedora-bootc  — already ships fedora/updates with GPG keys, so
+#     there is nothing to add; this script is then a no-op. (spdlog there is
+#     1.15, so the base-switch PoC stages spdlog-1.17 into the local ROS repo —
+#     see docs/base-switch-poc.md.)
 #
-# bootc-os quirks handled here (same as the COPR image):
-#   1. bootc-os ships ONLY the Hummingbird repo and does NOT enable the stock
-#      Fedora repositories; our ROS RPMs still need ordinary Fedora libraries,
-#      so add `fedora` + `updates` or nothing resolves.
-#   2. bootc-os overrides dnf's $releasever to a snapshot id while `rpm -E
-#      %fedora` still reports the real release. We bake the real release into
-#      the baseurls rather than touching the global $releasever (which bootc's
-#      own repo resolution relies on).
-#
-# NOTE ON ARCH/RELEASE: our RPMs are built for aarch64 against Fedora's current
-# release in the Hummingbird build env. Build this image on a bootc-os base of
-# the MATCHING Fedora release and arch, or system-library sonames may not line
-# up. `rpm -E %fedora` below pins the Fedora repos to whatever the base reports.
+# Two bootc quirks this handles on the Hummingbird base:
+#   1. No stock Fedora repos (added below).
+#   2. The Fedora RELEASE must be detected from the actual package disttag, NOT
+#      from `rpm -E %fedora`: on the current Hummingbird base the %fedora macro
+#      is pinned to 43 while the userspace/kernel are fc44 (verified 2026-10-07),
+#      so %fedora would author fedora-43 repos onto an fc44 system. We derive the
+#      release from an installed stock package's disttag instead.
 set -euxo pipefail
 
-FED="$(rpm -E %fedora)"
+# If the stock Fedora repos are already present and enabled (fedora-bootc),
+# there is nothing to do.
+if dnf -q repolist --enabled 2>/dev/null | grep -qiE '^(fedora|updates)[[:space:]]'; then
+  echo "enable-repos: stock Fedora repos already enabled — nothing to add."
+  exit 0
+fi
+
+# Detect the real Fedora release from a stock package's disttag (fcNN), falling
+# back to %fedora only if that fails.
+FED="$(rpm -q --qf '%{release}\n' kernel-core 2>/dev/null \
+        | grep -oE 'fc[0-9]+' | head -1 | tr -dc '0-9')"
+if [ -z "${FED}" ]; then
+  FED="$(rpm -qa --qf '%{release}\n' 2>/dev/null \
+          | grep -oE 'fc[0-9]+' | sort | uniq -c | sort -rn | head -1 \
+          | grep -oE 'fc[0-9]+' | tr -dc '0-9')"
+fi
+if [ -z "${FED}" ]; then
+  FED="$(rpm -E %fedora)"
+fi
 
 # Ensure the Fedora release GPG key is available LOCALLY before writing the repos.
 # dnf fetches a repo's gpgkey URL once, with no retry, at transaction time — and
@@ -46,8 +62,8 @@ if [ ! -s "$LOCALKEY" ]; then
 fi
 GPGKEY="file://${LOCALKEY}"
 
-# Release is hardcoded (not $releasever) so these resolve despite bootc-os's
-# snapshot override; $basearch is left for dnf to expand at install time.
+# Release is the detected disttag (not $releasever) so these resolve despite the
+# Hummingbird base's snapshot $releasever override; $basearch is left for dnf.
 cat > /etc/yum.repos.d/fedora.repo <<EOF
 [fedora]
 name=Fedora ${FED} - \$basearch

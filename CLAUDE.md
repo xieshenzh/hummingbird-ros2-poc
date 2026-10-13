@@ -54,6 +54,7 @@ dnf/Fedora.
 | [`realtime-kernel.md`](docs/realtime-kernel.md) | PREEMPT_RT kernel + `bootc-os-rt` status (fc43/fc44, both arches) |
 | [`simulation-gazebo.md`](docs/simulation-gazebo.md) | boost blocker, sim-bundle workaround, interactive GUI |
 | [`verification.md`](docs/verification.md) | verification status, test plan, image-size analysis |
+| [`base-switch-poc.md`](docs/base-switch-poc.md) | PoC: ROS 2 + RT on a non-Hummingbird base (`fedora-bootc:44`); spdlog-1.17 gap, runbook |
 | [`open-questions.md`](docs/open-questions.md) | open risks + provenance + upstream reference Dockerfiles |
 | [`artifacts.md`](docs/artifacts.md) | archived artifacts + local podman image inventory |
 
