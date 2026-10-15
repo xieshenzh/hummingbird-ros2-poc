@@ -1,0 +1,7 @@
+# Locally-built ROS 2 Jazzy ros_base-closure RPMs (+ the urdfdom system RPM),
+# copied in from the build VM/EC2 before `podman build` (see the Dockerfile
+# header / ../../docs/ros-base-rpms.md). Not committed — build artifacts tracked
+# as spec sources in the hummingbird-rpms monorepo.
+rpms/
+# x86_64 RPMs built natively on EC2, kept for the x86_64 image.
+rpms-x86_64/

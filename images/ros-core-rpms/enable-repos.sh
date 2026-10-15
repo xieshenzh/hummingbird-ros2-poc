@@ -59,6 +59,10 @@ if [ ! -s "$LOCALKEY" ]; then
       "https://src.fedoraproject.org/rpms/fedora-repos/raw/f${FED}/f/RPM-GPG-KEY-fedora-${FED}-primary" \
       -o "$LOCALKEY"
   fi
+  # Clean the transient keyring/temp files so nothing is left in /tmp — bootc
+  # container lint (nonempty-run-tmp) fails on leftover content in /run and /tmp.
+  rm -rf "${tmpk:-}" "${GNUPGHOME:-}"
+  unset GNUPGHOME
 fi
 GPGKEY="file://${LOCALKEY}"
 

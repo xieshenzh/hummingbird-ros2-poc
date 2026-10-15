@@ -31,6 +31,7 @@ dnf/Fedora.
 |---|---|---|
 | `ros-core` / `ros-base` (COPR) | n/a (COPR x86_64-only) | ✅ built + tested |
 | `ros-core-rpms` (Hummingbird RPMs) | ✅ built + verified | ✅ built + verified |
+| `ros-base-rpms` (Hummingbird RPMs) | ✅ 41 RPMs built + image verified (tf2/rsp/rosbag2-mcap, lint 14/0) | 🔬 researched (same specs; build pending) |
 | `sim-bundle` bridge/simulation/gazebo | n/a (COPR) | ✅ built + tested (native) |
 | native `simulation`/`gazebo` | ❌ boost skew | ❌ boost skew → use sim-bundle |
 | `bootc-os-rt` (PREEMPT_RT) fc43 | ✅ built + BOOTED | ✅ built + BOOTED |
@@ -51,6 +52,7 @@ dnf/Fedora.
 |---|---|
 | [`established-facts.md`](docs/established-facts.md) | base image, tavie COPR, bootc-os quirks, Gazebo-on-Fedora, why-choices |
 | [`ros-core-rpms.md`](docs/ros-core-rpms.md) | the Hummingbird-built ROS 2 RPM path (both arches) |
+| [`ros-base-rpms.md`](docs/ros-base-rpms.md) | ros_base closure (41 new RPMs), urdfdom gap, latest-base compat, build recipe |
 | [`realtime-kernel.md`](docs/realtime-kernel.md) | PREEMPT_RT kernel + `bootc-os-rt` status (fc43/fc44, both arches) |
 | [`simulation-gazebo.md`](docs/simulation-gazebo.md) | boost blocker, sim-bundle workaround, interactive GUI |
 | [`verification.md`](docs/verification.md) | verification status, test plan, image-size analysis |
@@ -73,6 +75,8 @@ images/ros-core-rpms/   FROM bootc-os; ros-core from HUMMINGBIRD-BUILT RPMs (NO 
   enable-repos.sh       stock Fedora repos only (base already has the hummingbird repo → spdlog-1.17)
   rpms/                 aarch64 ros-jazzy-* RPMs (162; gitignored; specs in hummingbird-rpms monorepo)
   rpms-x86_64/          x86_64 ros-jazzy-* RPMs (162; gitignored; NEVER mix arches)
+images/ros-base-rpms/   FROM ros-core-rpms; adds ros_base closure (41 ros-jazzy incl. urdfdom). ARG BASE_IMAGE. aarch64 BUILT+verified — see docs/ros-base-rpms.md
+  rpms/ rpms-x86_64/    ros_base-closure RPMs per arch (gitignored; the local repo also carries the 162 ros_core RPMs for uninstalled-in-base deps e.g. sensor_msgs_py)
 images/bootc-os-rt/     FROM bootc-os; swaps stock kernel -> kernel-rt (PREEMPT_RT), initramfs, RT kargs.d
   kargs.d/10-realtime.toml   RT boot args (preempt=full, nowatchdog; isolcpus/... template)
   rpms-rt/              local kernel-rt-* RPMs (gitignored; produce with scripts/rt-kernel-build.sh)
