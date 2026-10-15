@@ -243,9 +243,43 @@ overlay on `ros-base-rpms:latest`.
   copyright/xmllint style checks. The one failure is
   `play_fails_gracefully_if_needed_converter_plugin_does_not_exist` — a *negative*
   test asserting `ros2 bag play` exits `1` for a missing converter plugin; it
-  exits `11` instead (error still caught, different exit code — an error-path
-  propagation detail, not a record/play defect). The summary's "2 failures" is the
-  same case double-counted at the ctest+gtest levels.
+  exits `11`/`134`/`139` instead (see root cause below). The summary's "2 failures"
+  is the same case double-counted at the ctest+gtest levels.
+
+#### Root cause of the negative case (investigated 2026-10-15) — a ros_core spdlog-shutdown crash, NOT an mcap/ros_base bug
+
+The missing-converter path makes `ros2 bag play` (a C++ process) `exit()` **without**
+a clean `rclcpp::shutdown()`, so logging is torn down from the libc `exit()` atexit
+path. That crashes **nondeterministically** (SIGSEGV 139 / SIGABRT 134 / occasionally
+clean) — memory corruption. gdb backtrace:
+
+```
+#0 spdlog::details::registry::drop(...)   /lib64/libspdlog.so.1.17
+#1 rcl_logging_external_shutdown()        librcl_logging_spdlog.so
+#2 rclcpp::Context::shutdown(...)         librclcpp.so
+#3 rclcpp::Context::~Context()
+#4 _Sp_counted_base::_M_release_last_use_cold()
+#5 __run_exit_handlers / exit()           libc
+```
+
+- **Not mcap/ros_base:** both storage backends crash (sqlite3 too — the passing run
+  just got the occasional clean exit); the error message
+  (`Could not find converter for format wrong_format`) prints correctly first.
+- **ros_core layer:** `ldd librcl_logging_spdlog.so` → it dynamically links the
+  **shared** `libspdlog.so.1.17` + `libfmt.so.12`. The crash is a **static-destruction
+  -order fiasco** between the shared libspdlog's global `registry` singleton and
+  `rcl_logging_spdlog`'s atexit shutdown. Upstream `spdlog_vendor` bundles spdlog
+  statically/header-only (no cross-DSO teardown); Hummingbird's `spdlog_vendor`
+  uses the **system shared** spdlog (the deliberate "use system lib" choice) — which
+  exposes it. **Pre-existing + latent in ros_core**, not introduced by ros_base: the
+  ros_core suites (`test_rclcpp`/`test_communication`) `init`/`shutdown` cleanly so
+  never hit the atexit path; a clean rclpy `init→shutdown→exit` loop is 20/20 clean.
+- **Fix candidates (ros_core, follow-up):** rebuild `rcl_logging_spdlog` (and
+  `spdlog_vendor`) to link spdlog **header-only / static** (`SPDLOG_HEADER_ONLY` or a
+  static spdlog), so the registry lives in `librcl_logging_spdlog.so` and is destroyed
+  in-DSO — matching upstream. Trade-off: diverges from the system-shared-spdlog
+  convention. Verify by re-running `rosbag2_tests` (expect 14/14 play) + the rclpy/C++
+  no-clean-shutdown exit loops.
 - **Net: ~183/184 pass, 1 negative-path exit-code mismatch, 9 skipped (cppcheck).**
   Support packages built in the overlay (not in ros_base): `python_cmake_module`,
   `test_interface_files`, `test_msgs`, `rosbag2_test_common`, `rosbag2_test_msgdefs`.
