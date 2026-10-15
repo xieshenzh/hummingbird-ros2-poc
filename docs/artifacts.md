@@ -27,6 +27,7 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `ros-core-rpms-rt-chunked.tar.gz` | fc43 x86_64 RT + ros-core (rechunked) |
 | `ros-core-rpms-rt-chunked-aarch64.tar.gz` | fc43 aarch64 RT + ros-core (rechunked) |
 | `ros-core-rpms-rt-chunked-fc44-x86_64.tar.gz` | fc44 x86_64 RT + ros-core (rechunked 1.54→1.18 GB; kernel in its own 75.3 MB layer) |
+| `ros-core-rpms-rt-chunked-fc44-aarch64.tar.gz` | fc44 aarch64 RT + ros-core (rechunked 1.97→1.25 GB; kernel in its own 175 MB layer; done natively on local arm64 podman) |
 | `bootc-os-rt.qcow2.gz` | fc43 x86_64 base qcow2 |
 | `bootc-os-rt-ros-core-aarch64.qcow2.gz` | fc43 aarch64 ros-core qcow2 |
 | `bootc-os-rt-fc44-aarch64.qcow2.gz` | fc44 aarch64 base qcow2 |
@@ -51,6 +52,7 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `ros-core-rpms-rt-chunked:fc43-x86_64` (also `:latest`) | amd64 | 1.19 GB |
 | `ros-core-rpms-rt-chunked:fc43-aarch64` | arm64 | 1.25 GB |
 | `ros-core-rpms-rt-chunked:fc44-x86_64` | amd64 | 1.18 GB |
+| `ros-core-rpms-rt-chunked:fc44-aarch64` | arm64 | 1.25 GB |
 | `ros-core-rpms-rt:fc44-aarch64` | arm64 | 1.97 GB |
 | `ros-core-rpms-rt:fc44-x86_64` | amd64 | 1.54 GB |
 
