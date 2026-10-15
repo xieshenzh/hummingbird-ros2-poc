@@ -225,6 +225,33 @@ workflow, fed the 162 `ros_core` RPMs via `--local-rpms-dir`. Specs committed to
   segfaults (gcc 14 runtime). Always runtime-test on the Hummingbird bootc-os base
   — same rule as `ros_core`.
 
+### ROS 2 test suites — aarch64 (2026-10-15)
+
+Ran the upstream ros_base test packages against the **installed** RPMs (dedicated
+test packages built on the shipped-RPM underlay — tests what we ship, same method
+as ros_core's `test_rclcpp`/`test_communication` in [`base-switch-poc.md`](base-switch-poc.md)).
+Runner: `scripts/run-test-suites-rosbase.sh` + the `base-switch-poc/Containerfile.test-dev`
+overlay on `ros-base-rpms:latest`.
+
+- **`test_tf2` (geometry2) — 100% pass:** buffer_core_test 15/0, test_convert 6/0,
+  test_message_filter 9/0, test_tf2_bullet 2/0, test_utils 2/0,
+  test_buffer_client_tester 2/0, test_static_publisher 2/0 — the full tf2
+  transform/buffer/listener/conversion/message-filter surface.
+- **`rosbag2_tests` — pass except 1 negative-path case:** record_end_to_end 32/0,
+  info_end_to_end 26/0, play_end_to_end 13/14, cpp_api 2/0, get_service_info 6/0,
+  test_converter, test_reindex, storage_api 2/0, + all cpplint/cppcheck/uncrustify/
+  copyright/xmllint style checks. The one failure is
+  `play_fails_gracefully_if_needed_converter_plugin_does_not_exist` — a *negative*
+  test asserting `ros2 bag play` exits `1` for a missing converter plugin; it
+  exits `11` instead (error still caught, different exit code — an error-path
+  propagation detail, not a record/play defect). The summary's "2 failures" is the
+  same case double-counted at the ctest+gtest levels.
+- **Net: ~183/184 pass, 1 negative-path exit-code mismatch, 9 skipped (cppcheck).**
+  Support packages built in the overlay (not in ros_base): `python_cmake_module`,
+  `test_interface_files`, `test_msgs`, `rosbag2_test_common`, `rosbag2_test_msgdefs`.
+- **Not run:** the per-library internal unit suites (would rebuild the libs from
+  source, not test the RPM binary) — same scoping as the ros_core suites.
+
 ### `enable-repos.sh` fix landed here
 The gpg-keyring derivation left its `mktemp`/`GNUPGHOME` dirs in `/tmp`, tripping
 `bootc container lint` `nonempty-run-tmp` (inherited by every image built on
