@@ -111,17 +111,73 @@ Tier A 1→17 (topological, above) → Tier B (image_transport, ros_gz_interface
 ros_gz_bridge → ros_gz_image, ros_gz_sim) → `simulation` metapackage → the
 `simulation` image (`FROM ros-base` + `dnf install ros-jazzy-simulation`).
 
+## Build results — aarch64 (2026-10-15)
+
+Built natively on the (resized: 10 CPU / 24 GB) Lima VM, offline vendor recipe.
+**16 of the 17 Tier-A vendors built** + the Qt5 QML stack rebuilt against icu78:
+
+- **gz core (10):** gz_cmake 3.6.0, gz_utils 2.2.1, gz_tools 2.0.4, gz_math 7.7.0,
+  gz_plugin 2.0.4, gz_msgs 10.4.0, gz_common 5.9.0 (needs **gts** for graphics),
+  gz_transport 13.6.0, gz_fuel_tools 9.1.1, sdformat 14.9.0 (urdfdom optional → off).
+- **render/sim (4):** gz_ogre_next 2.3.3 (+ the rolling **cxx20 STLAllocator patch**
+  for gcc16), gz_rendering 8.3.0 (ogre2-only), gz_physics 7.8.0 (**bullet+TPE**),
+  gz_sensors 8.2.2.
+- **Qt5 for the GUI:** qt5-qtdeclarative + qt5-qtquickcontrols2 rebuilt `.hum1`
+  against the base's **icu78** (Fedora ships them against icu77 → conflict).
+- Commits: hummingbird-rpms `9d292db9` (gz_cmake), `904afef6` (13 more gz vendors +
+  generator/driver), `80dc3820` (Qt5 icu78).
+
+Recurring build gotchas handled (all in `gen_gz_vendor.sh`): `VCS_TYPE path` offline
+rewire + pre-applied vendor patches (inline AND multiline PATCHES forms);
+`QA_SKIP_BUILD_ROOT=1` (gz bakes CMAKE_INSTALL_PREFIX into .so); patchelf rpath
+shrink; protobuf-devel + zeromq/cppzmq-devel BRs for the transitive imported targets
+(`protobuf::libprotobuf`, `CPPZMQ::CPPZMQ`); drop Fedora `python3-protobuf` (old 3.19
+vs hummingbird protobuf 36.2).
+
+### Two deferrals / blockers found at build time
+
+1. **DART deferred (gz_dartsim NOT built):** DART 6.13.2 needs **fcl** (Flexible
+   Collision Library), which is **absent from Fedora 44** (only python bindings).
+   → `gz_physics` built with **bullet + TPE** engines instead (dartsim is gz-sim's
+   default, but bullet works; `--physics-engine gz-physics-bullet-plugin`). Enabling
+   dartsim = package fcl (+ resolve urdfdom for DART) + DART's boost-1.90 compile.
+
+2. **gz_gui + gz_sim BLOCKED on an icu conflict (the GUI gate):** gz-sim 8
+   **hard-requires** gz-gui8 + Qt5 (no headless-only build). The Qt5 QML rebuild
+   against icu78 is done, BUT **gz-rendering REQUIRES gz-common[geospatial] → gdal →
+   samba-core-libs**, and gdal/samba are **Fedora-only, built against icu77**, which
+   cannot coexist with the base's icu78 (needed by Qt5). See the GUI evaluation below.
+
+## GUI evaluation (requested 2026-10-15)
+
+GUI is **feasible but gated by a second icu77/icu78 fault line**. The Qt5 half is
+solved (qtdeclarative/qtquickcontrols2 rebuilt against icu78). The remaining blocker:
+the rendering path drags in `gdal`→`samba` (icu77), which clashes with icu78. To
+finish gz_gui + gz_sim + the GUI, pick ONE of:
+
+- **A — rebuild gdal against icu78 with the SMB driver off** (~1 package): breaks the
+  samba→icu77 chain while keeping geospatial for gz-rendering. Smallest IF gdal has no
+  other icu77-tied deps (unverified — gdal is driver-heavy). Then gz_gui → gz_sim.
+- **B — strip geospatial** from gz_common + gz_rendering (patch 2 vendors, rebuild the
+  rendering subtree): avoids gdal/samba entirely; **loses DEM/heightmap terrain** and
+  risks gz-rendering source patches (it uses geospatial for heightmaps).
+- **C — rebuild samba against icu78** (clean but **large**: samba is a big multi-pkg
+  build).
+
+After the chosen fix: build **gz_gui** (Qt5 icu78, ready) → **gz_sim** (big compile) →
+Tier B (ros_gz) → the `simulation` image. Runtime GUI also needs the icu78 QML runtime
+modules (qtquickcontrols2, qtgraphicaleffects) + software GL in the image (proven on
+x86_64 in [`simulation-gazebo.md`](simulation-gazebo.md)). Rough effort: **A** is the
+fastest to a GUI sim (~a few hours incl. the gz_sim compile); **B** medium + lossy;
+**C** largest.
+
 ## Status
 
 | Step | aarch64 | x86_64 |
 |---|---|---|
 | closure mapped (Tier A 17 + Tier B 6) | ✅ 2026-10-15 | ✅ (same specs) |
-| offline-vendor pattern proven (gz_cmake_vendor 0.0.12 → gz-cmake 3.6.0) | ✅ built, mock/offline, lint n/a | ❌ |
-| Tier A remaining (16 vendors incl. ogre-next, DART, gz-sim) | ❌ needs VM resize + per-pkg specs | ❌ |
-| Tier B (ros_gz) + simulation image | ❌ | ❌ |
-
-**POC result (2026-10-15):** `gz_cmake_vendor` built clean in mock with no network
-(hummingbird-rpms `9d292db9`), proving the `VCS_TYPE path` offline-vendor recipe.
-The remaining 16 Tier-A vendors follow the same per-package recipe; the heavies
-(ogre-next, DART, gz-sim) additionally need the VM resized and carry the risks in
-the blocker section (DART↔boost 1.90, protobuf, Qt5).
+| Tier A core + render/sensors/physics (16 vendors) | ✅ built | ❌ |
+| Qt5 QML rebuilt against icu78 | ✅ built | ❌ |
+| gz_dartsim (DART) | ⚠️ deferred (fcl missing) | — |
+| gz_gui + gz_sim | ⛔ blocked on gdal/samba icu77 (see GUI eval) | ❌ |
+| Tier B (ros_gz) + simulation image | ❌ (after gz_sim) | ❌ |
