@@ -53,6 +53,7 @@ dnf/Fedora.
 | [`established-facts.md`](docs/established-facts.md) | base image, tavie COPR, bootc-os quirks, Gazebo-on-Fedora, why-choices |
 | [`ros-core-rpms.md`](docs/ros-core-rpms.md) | the Hummingbird-built ROS 2 RPM path (both arches) |
 | [`ros-base-rpms.md`](docs/ros-base-rpms.md) | ros_base closure (41 new RPMs), urdfdom gap, latest-base compat, build recipe |
+| [`simulation-rpms.md`](docs/simulation-rpms.md) | simulation variant mapping (gz Harmonic gz_*_vendor + ros_gz), offline-vendor recipe, blockers; gz_cmake_vendor built |
 | [`realtime-kernel.md`](docs/realtime-kernel.md) | PREEMPT_RT kernel + `bootc-os-rt` status (fc43/fc44, both arches) |
 | [`simulation-gazebo.md`](docs/simulation-gazebo.md) | boost blocker, sim-bundle workaround, interactive GUI |
 | [`verification.md`](docs/verification.md) | verification status, test plan, image-size analysis |
