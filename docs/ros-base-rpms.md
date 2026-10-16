@@ -220,6 +220,63 @@ workflow, fed the 162 `ros_core` RPMs via `--local-rpms-dir`. Specs committed to
   (`ros-core-rpms-rt:fc44-aarch64`) — proves the RT robot-OS chain carries
   ros_base. (The RT *kernel* there is the 7.2.7 build; a 7.2.10 kernel-rt rebuild
   for the current base is the standard follow-up per [`realtime-kernel.md`](realtime-kernel.md).)
+
+### RT image: rebuilt fresh, rechunked, booted + RT-verified, suites re-run (2026-10-16)
+
+The full ros-core→ros-base RT chain was rebuilt from scratch on the Lima aarch64
+VM (the images from the Oct 15 session only existed in a since-deleted macOS
+podman machine; the RPM staging + archived RT base were intact):
+
+- **Bug found + fixed on the way:** `images/ros-core-rpms/enable-repos.sh`
+  crashed on the RT base — the disttag detection (2026-10-13) queried
+  `kernel-core`, which bootc-os-rt does not ship (stock kernel is swapped for
+  `kernel-rt-core`), and the failed query killed the script under `pipefail`
+  before the `rpm -qa` fallback. Fix (commit `e2df381`): query both kernel
+  flavors + make detection pipefail-tolerant. The RT build path had been broken
+  since the disttag fix landed (the Oct 1 RT image predated it).
+- **`ros-core-rpms-rt:fc44-aarch64`** rebuilt from the archived
+  `bootc-os-rt:fc44-aarch64` (kernel swap unchanged) with the CURRENT
+  Dockerfile/enable-repos.sh and the **fixed `rcl_logging_spdlog`** RPM staged
+  (same NVR as the pre-fix build — content-verified by checksum). 1.98 GB,
+  lint 14/1.
+- **`ros-base-rpms-rt:latest` — 2.52 GB**; `ros2 pkg list` = 192; lint 14/1;
+  kernel-rt 7.2.7 only (stock kernel absent).
+- **Rechunked** (chunkah): **2.52 → 1.73 GB**, kernel in its own 175 MB layer
+  (`ros-base-rpms-rt-chunked:latest` / `:fc44-aarch64`).
+- **Container tests, BOTH plain + chunked:** the functional set (tf2_echo
+  spins, robot_state_publisher loads, rosbag2 mcap record→info→**play
+  round-trip**, default Fast-DDS pub/sub) all PASS; lint 14/1.
+- **Full suites on the RT image:** `test_tf2` + `rosbag2_tests` via
+  `Containerfile.test-dev` on `ros-base-rpms-rt:latest` — **184 tests, 0
+  errors, 0 failures, 9 skipped (cppcheck)** — identical profile to the non-RT
+  image; `play_end_to_end` 14/14 re-proves the spdlog shutdown fix on the RT
+  stack.
+- **BOOTED + PREEMPT_RT confirmed live (TCG, 2026-10-16):** aarch64 path from
+  the base-switch PoC — thin serial-login overlay → `bootc install to-disk
+  --via-loopback` → qemu TCG (Lima VM, no KVM) → `rt-serial-verify.py` rc=0:
+  banner `7.2.7-200.fc44.aarch64+rt … #1 SMP PREEMPT_RT`, getty login, live
+  `uname -r`/`-v`, cmdline `preempt=full nowatchdog`. Transcripts:
+  `artifacts/serial-rosbase-rt-aarch64.txt` (+ ros-over-serial below).
+  - Layout note: bootc 1.17 installs with **/boot INSIDE root** (2 partitions:
+    ESP + root) and an empty deploy fstab — the historical aarch64-TCG `/boot`
+    device-timeout emergency-mode issue does not apply; no fstab aid needed.
+  - **ros_base on the booted RT VM (over serial):** `ros2 pkg list` = **192**
+    and a **default Fast-DDS pub/sub round-trip PASS** (`ROS2_ON_RT_OK`) —
+    the same class of on-boot proof as the base-switch PoC. The rosbag2 leg
+    produced no result: `ros2 bag record` was killed by its 400 s harness
+    timeout mid-cold-start (TCG makes every CLI cold-start multi-minute;
+    bag.out holds only the startup warning). Test-harness artifact, NOT a
+    functional failure — the same rosbag2 mcap stack passes in-container on
+    this image (smoke round-trip + suites 184/0/0). Transcript:
+    `artifacts/serial-rosbase-rt-ros-aarch64.txt`.
+  - Harness: `.poc-scratch/rosbase-rt/` (login overlay, install-disk, two-boot
+    verify, serial ROS drivers). Two driver lessons encoded there: serial
+    sends MUST interleave reads (the first driver deadlocked — qemu applies
+    backpressure once its chardev buffer fills, and the naive per-char
+    `sendall` from the base-switch scripts only survived under KVM), and
+    TCG-timeout budgets must assume multi-minute `ros2` cold starts.
+- **Archived:** `artifacts/ros-base-rpms-rt-fc44-aarch64.oci.tar.gz` (1.18 GB)
+  + `artifacts/ros-base-rpms-rt-chunked-fc44-aarch64.tar.gz` (598 MB).
 - ⚠️ **Not a valid test on stock Fedora:** these C++ RPMs are built against the
   Hummingbird rawhide cohort (gcc 16 libstdc++); running them in plain `fedora:44`
   segfaults (gcc 14 runtime). Always runtime-test on the Hummingbird bootc-os base
@@ -307,4 +364,7 @@ lint 14/0. Generic fix; benefits `ros-core-rpms` too.
 | specs authored + committed | ✅ `6bbb756a` | ✅ (same specs) |
 | RPMs built | ✅ 2026-10-15 (native Lima) | ❌ (build on EC2 c6i, `--arch x86_64`) |
 | `ros-base-rpms` image built + verified | ✅ 1.96 GB, lint 14/0, tf2+rsp+rosbag2(mcap) | ❌ |
-| `ros-base-rpms-rt` (RT) built | ✅ 2.51 GB (on 7.2.7 RT base) | ❌ |
+| `ros-base-rpms-rt` (RT) built | ✅ 2.52 GB (fresh 2026-10-16, fixed spdlog; first build 2026-10-15) | ❌ |
+| `ros-base-rpms-rt-chunked` | ✅ 1.73 GB (2026-10-16) | ❌ |
+| RT image booted + PREEMPT_RT verified | ✅ 2026-10-16 (qemu TCG, serial login + `uname`) | ❌ |
+| test suites on the RT image | ✅ 184/0/0 (2026-10-16) | ❌ |

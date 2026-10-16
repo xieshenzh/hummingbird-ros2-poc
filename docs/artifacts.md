@@ -23,6 +23,8 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `bootc-os-rt-fc44-aarch64.oci.tar.gz` | fc44 aarch64 RT base |
 | `bootc-os-rt-fc44-x86_64.oci.tar.gz` | fc44 x86_64 RT base (1.06 GB image; base pinned to 7.2.7 digest `sha256:1eec04be…`) |
 | `ros-core-rpms-rt-fc44-aarch64.oci.tar.gz` | fc44 aarch64 RT + ros-core |
+| `ros-base-rpms-rt-fc44-aarch64.oci.tar.gz` | fc44 aarch64 RT + ros-base (2.52 GB image; fresh 2026-10-16 build, fixed spdlog; booted + RT-verified + suites 184/0/0) |
+| `ros-base-rpms-rt-chunked-fc44-aarch64.tar.gz` | fc44 aarch64 RT + ros-base (rechunked 2.52→1.73 GB; kernel in its own 175 MB layer) |
 | `ros-core-rpms-rt-fc44-x86_64.oci.tar.gz` | fc44 x86_64 RT + ros-core (1.54 GB image) |
 | `ros-core-rpms-rt-chunked.tar.gz` | fc43 x86_64 RT + ros-core (rechunked) |
 | `ros-core-rpms-rt-chunked-aarch64.tar.gz` | fc43 aarch64 RT + ros-core (rechunked) |
@@ -39,9 +41,17 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `serial-transcript-fc44-aarch64-login.txt` | fc44 aarch64 **full boot → interactive getty login → `uname`** (`#1 SMP PREEMPT_RT`), after the `/boot` `nofail` fstab fix — complete x86_64 parity (TCG) |
 | `serial-transcript-fc44-x86_64.txt` | fc44 x86_64 boot proof (banner `…x86_64+rt … #1 SMP PREEMPT_RT` + RT cmdline `preempt=full nowatchdog`, TCG) |
 | `serial-transcript-fc44-x86_64-login.txt` | fc44 x86_64 **full boot → interactive getty login → `uname`** (`#1 SMP PREEMPT_RT`, verify exit 0) — complete parity, TCG |
+| `serial-rosbase-rt-aarch64.txt` | **ros-base-rpms-rt** boot proof (2026-10-16, TCG): banner `…aarch64+rt … #1 SMP PREEMPT_RT` + getty login + live `uname` + `preempt=full nowatchdog` cmdline (rt-serial-verify rc=0) |
+| `serial-rosbase-rt-ros-aarch64.txt` | ros_base on the **booted RT VM** over serial (2026-10-16): `ros2 pkg list` = 192 + Fast-DDS pub/sub round-trip PASS; the rosbag2 leg hit a 400 s harness timeout mid-cold-start (TCG artifact — rosbag2 passes in-container on the same image) |
 | `kbuild-fc44.log` | fc44 kernel-rt build log |
 
 ## Loaded in local podman
+
+> The host's macOS podman machine (`podman-machine-default`, applehv, 6 CPU /
+> 16 GB / 186 GB, rootful, managed via Podman Desktop) holds the image set.
+> ⚠️ Agent/sandboxed shells: `XDG_CONFIG_HOME` may be redirected, which makes
+> the podman CLI blind to the machine + connections — export
+> `XDG_CONFIG_HOME=~/.config XDG_DATA_HOME=~/.local/share` first.
 
 | Tag | arch | size |
 |---|---|---|
@@ -55,6 +65,18 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `ros-core-rpms-rt-chunked:fc44-aarch64` | arm64 | 1.25 GB |
 | `ros-core-rpms-rt:fc44-aarch64` | arm64 | 1.97 GB |
 | `ros-core-rpms-rt:fc44-x86_64` | amd64 | 1.54 GB |
+
+Loaded in the **macOS podman machine** (as of 2026-10-16; the earlier
+base-switch/ros-base images from Oct 13–15 are still there too):
+
+| Tag | arch | size |
+|---|---|---|
+| `ros-base-rpms-rt:fc44-aarch64` (fresh 2026-10-16 rebuild, fixed spdlog) | arm64 | 2.52 GB |
+| `ros-base-rpms-rt-chunked:fc44-aarch64` | arm64 | 1.73 GB |
+
+The Lima `fedora` VM's rootless podman also carries both fresh tags (where
+they were built). The older pre-spdlog-fix `ros-base-rpms-rt:latest`
+(2.51 GB, 2026-10-15) is still in the macOS machine's store.
 
 ## Notes
 
