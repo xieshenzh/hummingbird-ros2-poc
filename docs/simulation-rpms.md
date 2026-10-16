@@ -171,6 +171,37 @@ x86_64 in [`simulation-gazebo.md`](simulation-gazebo.md)). Rough effort: **A** i
 fastest to a GUI sim (~a few hours incl. the gz_sim compile); **B** medium + lossy;
 **C** largest.
 
+## GUI build-through (2026-10-15) — icu/samba conflict SOLVED; gz_gui BUILT
+
+The GUI gate (Qt5 needs icu78; rendering's geospatial pulled icu77 libs) was broken
+through. Resolution (committed): rebuild the icu77-linked libs clean, NOT samba
+(option C dead-ended on a Hummingbird gpgme repo bug).
+- **Qt5 QML** (qtdeclarative, qtquickcontrols2) rebuilt against **icu78** (`80dc3820`).
+- **gdal 3.12.4-1.hum1** rebuilt with `-DGDAL_USE_LIBSMBCLIENT=OFF` + mingw/java off
+  + optional scientific drivers off → minimal, **no samba**, keeps libgdal.so.38 for
+  geospatial (`d3d93926`). This removed the gdal→samba→icu77 chain.
+- **gz_gui 8.4.0 BUILT** against the icu78 Qt5 + clean gdal — the icu conflict is gone.
+  Needed a gcc16/protobuf-36 fix (wrap `string_view` descriptor accessors in
+  `TopicViewer.cc`).
+
+### gz-common `av` → ffmpeg → samba — SOLVED (ffmpeg rebuilt no-smb)
+gz-sim **hard-requires gz-common's `av` component** (video recording). `av` links
+Fedora `ffmpeg-free`, whose `libavformat` links **`libsmbclient` → samba (icu77)** —
+the *same* pattern as gdal, a second source of the icu77 pull. Fix (done): rebuild
+ffmpeg with **`--disable-libsmbclient`** + drop the `pkgconfig(smbclient)` BR, exactly
+like the gdal no-smb rebuild. **Built + verified on aarch64** (`ffmpeg-8.1.3-1.hum1`;
+hummingbird-rpms `1d0211e9`) — `libavformat-free` no longer requires libsmbclient, so
+the icu77 chain is fully severed. Note: Fedora's `ffmpeg-free` is built from a source
+RPM named plain **`ffmpeg`** (that's why `ffmpeg-free` koji/SRPM lookups 404); fetch
+the f44 SRPM via a `fedora:44` container (`dnf download --source ffmpeg`), since the
+Lima host is f43.
+
+**Remaining path:** rebuild gz_common **with av** (restore the ffmpeg-free-devel BR,
+now clean) → gz_sim (big compile; expect more gcc16/protobuf string_view source fixes,
+like gz_gui) → Tier B (ros_gz) → the `simulation` image. Runtime GUI additionally
+needs the icu78 QML runtime modules + software GL (proven on x86_64,
+[`simulation-gazebo.md`](simulation-gazebo.md)).
+
 ## Status
 
 | Step | aarch64 | x86_64 |
@@ -178,6 +209,9 @@ fastest to a GUI sim (~a few hours incl. the gz_sim compile); **B** medium + los
 | closure mapped (Tier A 17 + Tier B 6) | ✅ 2026-10-15 | ✅ (same specs) |
 | Tier A core + render/sensors/physics (16 vendors) | ✅ built | ❌ |
 | Qt5 QML rebuilt against icu78 | ✅ built | ❌ |
-| gz_dartsim (DART) | ⚠️ deferred (fcl missing) | — |
-| gz_gui + gz_sim | ⛔ blocked on gdal/samba icu77 (see GUI eval) | ❌ |
+| clean gdal (no-smb) | ✅ built | ❌ |
+| gz_gui (icu78 Qt5) | ✅ built | ❌ |
+| gz_dartsim (DART) | ⚠️ deferred (fcl missing → bullet/TPE physics) | — |
+| clean ffmpeg (no-smb) | ✅ built (`ffmpeg-8.1.3-1.hum1`, verified no libsmbclient) | ❌ |
+| gz_common+av → gz_sim (last Tier-A vendor) | ⏳ next (ffmpeg clears it; gz_sim = big compile) | ❌ |
 | Tier B (ros_gz) + simulation image | ❌ (after gz_sim) | ❌ |
