@@ -28,13 +28,18 @@ if dnf -q repolist --enabled 2>/dev/null | grep -qiE '^(fedora|updates)[[:space:
 fi
 
 # Detect the real Fedora release from a stock package's disttag (fcNN), falling
-# back to %fedora only if that fails.
-FED="$(rpm -q --qf '%{release}\n' kernel-core 2>/dev/null \
-        | grep -oE 'fc[0-9]+' | head -1 | tr -dc '0-9')"
+# back to %fedora only if that fails. Query BOTH kernel flavors: on the
+# PREEMPT_RT base the stock kernel is swapped for kernel-rt-core, so
+# kernel-core is ABSENT — its failed query also killed this script under
+# pipefail before the fallback could run (found building ros-core-rpms-rt,
+# 2026-10-16). rpm prints the "not installed" line to stdout, but it contains
+# no fcNN so the grep below still only matches the real disttag.
+FED="$(rpm -q --qf '%{release}\n' kernel-core kernel-rt-core 2>/dev/null \
+        | grep -oE 'fc[0-9]+' | head -1 | tr -dc '0-9' || true)"
 if [ -z "${FED}" ]; then
   FED="$(rpm -qa --qf '%{release}\n' 2>/dev/null \
           | grep -oE 'fc[0-9]+' | sort | uniq -c | sort -rn | head -1 \
-          | grep -oE 'fc[0-9]+' | tr -dc '0-9')"
+          | grep -oE 'fc[0-9]+' | tr -dc '0-9' || true)"
 fi
 if [ -z "${FED}" ]; then
   FED="$(rpm -E %fedora)"
