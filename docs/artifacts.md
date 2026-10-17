@@ -25,6 +25,7 @@ OCI image tarballs (`podman save | gzip`) and qcow2s:
 | `ros-core-rpms-rt-fc44-aarch64.oci.tar.gz` | fc44 aarch64 RT + ros-core |
 | `ros-base-rpms-rt-fc44-aarch64.oci.tar.gz` | fc44 aarch64 RT + ros-base (2.52 GB image; fresh 2026-10-16 build, fixed spdlog; booted + RT-verified + suites 184/0/0) |
 | `ros-base-rpms-rt-chunked-fc44-aarch64.tar.gz` | fc44 aarch64 RT + ros-base (rechunked 2.52→1.73 GB; kernel in its own 175 MB layer) |
+| `simulation-rpms-rt-fc44-aarch64.oci.tar.gz` | **fc44 aarch64 RT + ros-base + Gazebo simulation** (3.43 GB image; gz-sim 8.15.0 + ros_gz bridge, verified: physics + bridge round-trip; also loaded in the macOS podman machine) |
 | `ros-core-rpms-rt-fc44-x86_64.oci.tar.gz` | fc44 x86_64 RT + ros-core (1.54 GB image) |
 | `ros-core-rpms-rt-chunked.tar.gz` | fc43 x86_64 RT + ros-core (rechunked) |
 | `ros-core-rpms-rt-chunked-aarch64.tar.gz` | fc43 aarch64 RT + ros-core (rechunked) |
@@ -73,10 +74,11 @@ base-switch/ros-base images from Oct 13–15 are still there too):
 |---|---|---|
 | `ros-base-rpms-rt:fc44-aarch64` (fresh 2026-10-16 rebuild, fixed spdlog) | arm64 | 2.52 GB |
 | `ros-base-rpms-rt-chunked:fc44-aarch64` | arm64 | 1.73 GB |
+| `simulation-rpms-rt:latest` / `:fc44-aarch64` (built + verified 2026-10-16) | arm64 | 3.43 GB |
 
-The Lima `fedora` VM's rootless podman also carries both fresh tags (where
-they were built). The older pre-spdlog-fix `ros-base-rpms-rt:latest`
-(2.51 GB, 2026-10-15) is still in the macOS machine's store.
+The Lima `fedora` VM's rootless podman also carries both fresh ros-base tags plus
+`simulation-rpms-rt:latest` (where they were built). The older pre-spdlog-fix
+`ros-base-rpms-rt:latest` (2.51 GB, 2026-10-15) is still in the macOS machine's store.
 
 ## Notes
 
