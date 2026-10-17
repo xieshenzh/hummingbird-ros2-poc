@@ -34,6 +34,7 @@ dnf/Fedora.
 | `ros-base-rpms` (Hummingbird RPMs) | ✅ 41 RPMs built + image verified (tf2/rsp/rosbag2-mcap, lint 14/0); **RT: built 2.52 GB + rechunked 1.73 GB + BOOTED (PREEMPT_RT + on-boot Fast-DDS round-trip, TCG) + suites 184/0/0 (2026-10-16)** | 🔬 researched (same specs; build pending) |
 | `sim-bundle` bridge/simulation/gazebo | n/a (COPR) | ✅ built + tested (native) |
 | native `simulation`/`gazebo` | ❌ boost skew | ❌ boost skew → use sim-bundle |
+| **`simulation-rpms-rt` (Hummingbird RPMs)** | ✅ **BUILT 3.43 GB + VERIFIED 2026-10-16** (gz sim 8.15.0, bullet physics, ros_gz bridge round-trip) | ❌ |
 | `bootc-os-rt` (PREEMPT_RT) fc43 | ✅ built + BOOTED | ✅ built + BOOTED |
 | `bootc-os-rt` fc44 | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) | ✅ built + BOOTED + RT verified under TCG (full boot → login → `uname`) |
 
