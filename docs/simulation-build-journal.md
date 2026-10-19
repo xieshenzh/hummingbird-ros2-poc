@@ -488,11 +488,95 @@ bridge-test.sh, falling.sdf, ruby-dryrun.sh, core-dryrun.sh}`.
 
 ## 13. What remains
 
-- **Bake the `GZ_*` runtime paths** into the image (profile.d hook or
-  entrypoint; `images/sim-bundle/sim-entrypoint.sh` is the reference).
+- ~~**Bake the `GZ_*` runtime paths** into the image~~ **DONE 2026-10-19**
+  (`images/simulation-rpms/gz.sh` + ENTRYPOINT — see §14).
 - **Plain (non-RT) `simulation-rpms`**: diagnose the ros-core closure
   failure on the rolled `bootc-os:latest` (assumeno pre-check; likely
   another enabler rebuild or a base pin).
 - **x86_64** of the whole stack (same specs; EC2 c6i-class builder).
-- GUI runtime (QML modules + software GL) on the image; booting the sim
-  image as a robot OS; pushing to quay (same convention as ros-base).
+- ~~GUI runtime (QML modules + software GL) on the image~~ **DONE
+  2026-10-19** (gz-ui + tigervnc + the full wiring — see §14). Still
+  remaining: booting the sim image as a robot OS; pushing to quay (same
+  convention as ros-base); DART physics (an `fcl` enabler RPM + DART's
+  boost-1.90 compile — see `simulation-rpms.md`).
+
+## 14. GUI runtime baked in + official-image parity (2026-10-19)
+
+> Condensed version: [`simulation-rpms.md`](simulation-rpms.md) §"GUI
+> runtime + official-image parity". Image `86a00ffc9c4a` (rebuilt, rechunked,
+> delivered); wiring lives in `images/simulation-rpms/{gz.sh, gz-ui.sh,
+> ros-entrypoint.sh, demo-world.sdf, Dockerfile}`.
+
+### Correction to the 2026-10-16 record
+
+The "GUI alive, scene rendered, zero errors" claim was **half-true**: the
+final run's log actually contained the ogre2 render-engine failure (6
+error lines, `OGRE EXCEPTION(6:FileNotFoundException) … Hlms`) — the pixel
+stddev 0.46 was the flat GUI chrome, not a rendered 3D scene. (That
+session then died an ignominous death: it tried to `read` the screenshot
+file, GLM-5.3 is text-only, and once the image entered the session history
+every later request failed with the provider's
+`400: zai-org/GLM-5.3 is not a multimodal model`. The session was
+abandoned; the wiring was left uncommitted.) This session root-caused the
+whole chain and finished the job — the fixes below make the first
+genuinely-rendered 3D frame, pixel-verified.
+
+### The runtime bug chain — every link root-caused and baked in
+
+| # | Symptom | Root cause | Fix (where it lives) |
+|---|---|---|---|
+| 1 | GUI chrome loads, 3D viewport dead: `OGRE EXCEPTION(6:…Hlms…)` | Ogre2 takes the whole `GZ_RENDERING_RESOURCE_PATH` as ONE folder; `gz.sh` PREPENDS its exports and was sourced twice (entrypoint + script) → `path:path` + suffix | idempotency guard in `gz.sh` (exported `GZ_VENDOR_WIRED`) |
+| 2 | same exception even with a single path | the engine looks for `<resource>/ogre2/src/media/Hlms/…`; the vendored RPM installs the media at `ogre2/media` (no `src/`) | compat symlink (globbed over `gz-rendering*`) in the Dockerfile |
+| 3 | `[Err] [ServerConfig.cc] Failed to copy installed config […BUILDROOT…]` | gz-sim seeds its default server.config from the RPM's baked BUILDROOT path (same disease as the plugin paths) | `gz.sh` seeds gui.config + server.config as **symlinks** into `~/.gz/sim/8/` |
+| 4 | `Unable to find or download file` for `gz sim shapes.sdf` | worlds-by-name needs `GZ_SIM_RESOURCE_PATH`; the vendor hooks only export `GZ_CONFIG_PATH` (upstream works because their prefix isn't a BUILDROOT) | `gz.sh` exports the shipped `gz-sim*/worlds` dir |
+| 5 | `gz: not found` from `podman run <image> gz-ui` | the image had **no ENTRYPOINT** (only `CMD /sbin/init`) — earlier tests always passed `--entrypoint` explicitly, masking it | `ENTRYPOINT ["/usr/bin/ros-entrypoint.sh"]` + `/ros_entrypoint.sh` compat symlink |
+| 6 | SVG icons undecodable; `QtQuick.Dialogs` missing (10-16 leftovers) | `qt5-qtsvg` / `qt5-qtquickcontrols` dropped by `install_weak_deps=0`, runtime deps the vendor spec doesn't capture | explicit `dnf install` in the Dockerfile |
+| 7 | `bootc container lint`: var-tmpfiles + nonempty-run-tmp warnings | gz configs + krb5 scriptlet dirs in `/var` without tmpfiles.d declarations; selinux scriptlet residue (`/run/selinux-policy`, `/run/setrans`) in `/run` | generated `/usr/lib/tmpfiles.d/hummingbird-gz.conf` (glob-generated, survives version bumps) + `/run` scrub in the build cleanup |
+
+### The one-command GUI — `gz-ui`
+
+`tigervnc-server` (Xvnc = X server + VNC server in one process, software
+GL via Mesa llvmpipe — no GPU, no host X) baked into the image;
+`/usr/bin/gz-ui` starts Xvnc when no `DISPLAY` is set, uses an existing
+`DISPLAY` when set (X11 forwarding), and execs `gz sim` (args pass
+through; default world = the baked demo at
+`/usr/share/hummingbird/demo-world.sdf`):
+
+    podman run -d -p 5900:5900 <image> gz-ui [gz-sim args | world.sdf]
+    open vnc://localhost:5900      # password: hummingbird
+    # overrides: -e GZ_UI_VNC_PASSWORD=… / GZ_UI_GEOMETRY / GZ_UI_VNC_PORT
+
+Interactive: VNC forwards mouse/keyboard (verified live — the ball was
+driven along a triangle via 36 `/world/<w>/set_pose` service calls, the
+UserCommands system; note this gz-transport 13 CLI renamed the payload
+flag `--req`, not the older `--string`).
+
+### Verified (final image, 2026-10-19)
+
+- `bootc container lint`: **14 passed / 1 skipped / 0 warnings** (matches
+  the ros-base clean standard).
+- Official-image parity: `podman run <image> <cmd>` through the ENTRYPOINT
+  (gz/ros2 CLIs, `bash`), `gz sim -v4 -r -s 1 --iterations 3
+  --physics-engine gz-physics7-bullet-plugin shapes.sdf` **clean exit
+  rc=0** (world resolved by NAME), `ros2 launch ros_gz_sim
+  gz_sim.launch.py gz_args:=…` runs, `/ros_entrypoint.sh` present, all 4
+  ros_gz packages + launch files shipped. (Verification gotcha learned:
+  pipe exit codes through `tail` lie, and `-s` without `-r` starts the
+  server PAUSED — it never exits and the rc is meaningless.)
+- GUI via `gz-ui`: VNC live, scene rendering **pixel-verified** (red ball
+  ≈ 0.5 % of viewport, light scene gradient in the viewport center — the
+  first genuinely-rendered 3D frame for this image).
+- Smoke-tested natively in the **macOS podman machine** (applehv): gz CLI,
+  package list, bullet world run clean-exit.
+
+### Rechunked + delivered
+
+- Rebuilt on the RT base, rechunked with chunkah (`scripts/rechunk-image.sh`,
+  run rootless in the Lima VM — `bash scripts/…`, the ro virtiofs mount
+  hides the exec bit): **3.52 → 2.49 GB**, kernel isolated (175 MB layer),
+  per-RPM content layers.
+- Archived: `artifacts/simulation-rpms-rt-chunked-fc44-aarch64.tar.gz`
+  (819 MB); the pre-fix 2026-10-16 archive is superseded.
+- Loaded into the macOS podman machine (the XDG-export trap applies):
+  `simulation-rpms-rt:fc44-aarch64` (now the chunked image) +
+  `-chunked:fc44-aarch64` + `-chunked:latest`.

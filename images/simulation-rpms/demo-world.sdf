@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="demo">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+
+    <!-- lighting + a ground to see, and a ball that falls -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+    <model name="ground">
+      <static>true</static>
+      <pose>0 0 -0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>20 20 1</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>20 20 1</size></box></geometry>
+          <material><ambient>0.4 0.4 0.4 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="ball">
+      <pose>0 0 8 0 0 0</pose>
+      <link name="link">
+        <inertial><mass>1</mass><inertia><ixx>0.1</ixx><iyy>0.1</iyy><izz>0.1</izz></inertia></inertial>
+        <collision name="col"><geometry><sphere><radius>0.5</radius></sphere></geometry></collision>
+        <visual name="vis">
+          <geometry><sphere><radius>0.5</radius></sphere></geometry>
+          <material><ambient>0.9 0.2 0.1 1</ambient><diffuse>0.9 0.2 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

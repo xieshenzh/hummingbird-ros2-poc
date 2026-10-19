@@ -4,9 +4,10 @@
 > path for the `simulation` variant, following
 > [`ros-base-rpms.md`](ros-base-rpms.md). Supersedes the COPR/isolated-sysroot
 > `sim-bundle` workaround ([`simulation-gazebo.md`](simulation-gazebo.md)) with a
-> native, multi-arch, base-consistent build. **Status: mapped 2026-10-15; build
-> of the leaf vendor in progress.** For the complete, chronological record of
-> the 2026-10-16 build-through (every failure and fix), see
+> native, multi-arch, base-consistent build. **Status: image BUILT + VERIFIED
+> (aarch64, 2026-10-16); GUI runtime + official-image parity baked in and
+> delivered (2026-10-19).** For the complete, chronological record of the
+> 2026-10-16 build-through (every failure and fix), see
 > [`simulation-build-journal.md`](simulation-build-journal.md).
 
 ## Target
@@ -277,21 +278,69 @@ gdal, no-smb+no-openal ffmpeg, fiddle). 3.43 GB on the RT base.
   `gz sim -s -r --physics-engine gz-physics7-bullet-plugin`.
 - **ROS 2 ↔ Gazebo bridge round-trip**: `parameter_bridge /clock` →
   `ros2 topic echo /clock` received sim time over DDS.
-- ⚠️ **Runtime GZ_* plugin paths must be exported** (same trap as the sim-bundle
-  era — the vendored RPMs bake no working defaults):
-  `GZ_SIM_SYSTEM_PLUGIN_PATH=<...>/opt/gz_sim_vendor/lib64/gz-sim-8/plugins`,
-  `GZ_SIM_PHYSICS_ENGINE_PATH=<...>/opt/gz_physics_vendor/lib64`; the engine name is
-  **`gz-physics7-bullet-plugin`** (versioned .so name in this build). Bake these
-  into the image's profile/entrypoint before shipping (sim-bundle's
-  `sim-entrypoint.sh` is the reference).
+- ⚠️ ~~**Runtime GZ_* plugin paths must be exported**~~ **baked 2026-10-19**
+  — `/etc/profile.d/gz.sh` (sourced by the entrypoint + interactive shells),
+  see "GUI runtime + official-image parity" below.
 - Server-config quirk: gz-sim bakes its BUILDROOT into the default server.config
-  path (harmless warning when the world names its systems explicitly).
+  path (**fixed 2026-10-19**: gz.sh seeds gui.config + server.config as symlinks).
 
 ### Not done
 - The plain (non-RT) `simulation-rpms` chain: `ros-core-rpms` on the CURRENT
   `bootc-os:latest` fails closure resolution (the base rolled since 2026-10-15 —
   diagnose with the `--assumeno` pre-check; the RT chain is immune, pinned base).
-- x86_64 everything; the GUI runtime (QML/ogl) on the image; booting the sim image.
+- x86_64 everything; booting the sim image.
+
+## GUI runtime + official-image parity (2026-10-19) — baked, verified, delivered
+
+The image now behaves like the official `ros:jazzy-simulation` for every
+usage pattern, and the GUI runs from the image with one command. (The
+2026-10-16 "GUI verified" claim was half-true — the ogre2 render engine was
+silently failing in that log; the full debugging record is
+[`simulation-build-journal.md`](simulation-build-journal.md) §14.)
+
+### Building the image (same flow, new wiring layers)
+
+Same build as 2026-10-16 — stage the 257-RPM closure into
+`images/simulation-rpms/rpms/`, then on the Lima VM:
+
+    podman build --build-arg BASE_IMAGE=localhost/hummingbird-ros2-poc/ros-base-rpms-rt:latest \
+      -t localhost/hummingbird-ros2-poc/simulation-rpms-rt:latest images/simulation-rpms
+
+The image now carries:
+- **ENTRYPOINT `["/usr/bin/ros-entrypoint.sh"]`** + a `/ros_entrypoint.sh`
+  compat symlink — every `podman run <image> <cmd>` gets the ROS env + gz
+  wiring, like the official image. `CMD` stays `[/sbin/init]` (bootc boot
+  validity); interactive shell = `podman run -it <image> bash`.
+- **`gz.sh` → `/etc/profile.d/gz.sh`**: exports the vendored
+  plugin/media/QML paths — **idempotency-guarded** (a second source used
+  to double the paths and kill ogre2) — plus `GZ_SIM_RESOURCE_PATH` (the
+  shipped `gz-sim*/worlds`, so `gz sim shapes.sdf` resolves by name) and
+  gui.config/server.config **symlink** seeding (the RPMs' baked BUILDROOT
+  defaults are broken).
+- **ogre2 media fix**: the engine expects `…/ogre2/src/media/Hlms/…`, the
+  RPM installs `…/ogre2/media` — globbed compat symlink in the Dockerfile.
+- **`qt5-qtquickcontrols` + `qt5-qtsvg` + `tigervnc-server`** installed
+  explicitly (QtQuick.Dialogs for gz-gui's Main.qml; SVG icons; Xvnc).
+- **`gz-ui`** (`/usr/bin/gz-ui`): Xvnc + software GL + demo world when no
+  `DISPLAY`; existing `DISPLAY` used directly; args pass to `gz sim`:
+
+      podman run -d -p 5900:5900 <image> gz-ui [gz-sim args | world.sdf]
+      open vnc://localhost:5900            # password: hummingbird
+
+- **bootc-clean /var and /run**: content declared in a generated
+  `/usr/lib/tmpfiles.d/hummingbird-gz.conf`, selinux scriptlet residue
+  scrubbed from `/run` → `bootc container lint` **14/1/0**.
+
+### Verified + delivered (2026-10-19)
+- bullet physics: stock `shapes.sdf` via `--physics-engine
+  gz-physics7-bullet-plugin` **clean exit rc=0** (DART still deferred — fcl
+  missing in fc44); `ros2 launch ros_gz_sim gz_sim.launch.py` runs; GUI
+  rendering pixel-verified over VNC; smoke-tested natively in the macOS
+  podman machine.
+- Rechunked (chunkah): **3.52 → 2.49 GB**; archived as
+  `artifacts/simulation-rpms-rt-chunked-fc44-aarch64.tar.gz` (819 MB);
+  loaded into the macOS podman machine (`:fc44-aarch64` = the chunked
+  image, + `-chunked:fc44-aarch64`, `-chunked:latest`).
 
 ## Status
 
@@ -308,5 +357,6 @@ gdal, no-smb+no-openal ffmpeg, fiddle). 3.43 GB on the RT base.
 | gz_sim_vendor (last Tier-A vendor) | ✅ 2026-10-16 (gz-sim 8.15.0) | ❌ |
 | rubygem4.0-fiddle (gz CLI) | ✅ 2026-10-16 | ❌ |
 | Tier B (11 pkgs incl. 5 extra msg pkgs) | ✅ 2026-10-16 | ❌ |
-| `simulation-rpms-rt` image | ✅ BUILT 3.43 GB + VERIFIED (physics + bridge) | ❌ |
+| `simulation-rpms-rt` image | ✅ BUILT + VERIFIED (physics + bridge) 2026-10-16; **GUI runtime + official-parity rebuild 2026-10-19** (lint 14/1/0) | ❌ |
+| rechunked + delivered to the macOS machine | ✅ 2026-10-19: 3.52→2.49 GB, `:fc44-aarch64` (+ `-chunked` tags), native smoke-test | ❌ |
 | plain `simulation-rpms` image | ❌ (blocked: ros-core closure on rolled base) | ❌ |
