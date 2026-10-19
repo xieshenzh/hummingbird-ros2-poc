@@ -231,7 +231,7 @@ podman machine; the RPM staging + archived RT base were intact):
   crashed on the RT base — the disttag detection (2026-10-13) queried
   `kernel-core`, which bootc-os-rt does not ship (stock kernel is swapped for
   `kernel-rt-core`), and the failed query killed the script under `pipefail`
-  before the `rpm -qa` fallback. Fix (commit `e2df381`): query both kernel
+  before the `rpm -qa` fallback. Fix (commit `aaa31cb`): query both kernel
   flavors + make detection pipefail-tolerant. The RT build path had been broken
   since the disttag fix landed (the Oct 1 RT image predated it).
 - **`ros-core-rpms-rt:fc44-aarch64`** rebuilt from the archived

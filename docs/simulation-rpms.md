@@ -205,8 +205,8 @@ Lima host is f43.
 
 All remaining pieces landed natively on the Lima VM. **`simulation-rpms-rt:latest`
 (3.43 GB) — RT kernel + ros-base + Gazebo Harmonic simulation, 100% Hummingbird-built
-RPMs — BUILT and VERIFIED.** Specs committed: `c920116f` (Tier B + gz-sim vendor +
-gz-common av), `7551d853` (fiddle + ffmpeg no-openal).
+RPMs — BUILT and VERIFIED.** Specs committed: `8647926c` (Tier B + gz-sim vendor +
+gz-common av), `2e578ac9` (fiddle + ffmpeg no-openal).
 
 ### gz_common + av (the "remaining path", step 1)
 Rebuilt from the committed spec (the ffmpeg-free-devel BR restored — the VM's local
@@ -252,7 +252,7 @@ The bridge needed three CMake-integration fixes (now encoded in the generator):
 `gz-common[av] → libavdevice-free → libopenal → openal-soft (fmt-11)` conflicts with
 the base's `fmt-12` (spdlog 1.17 via the rcl stack). Fix: **ffmpeg rebuilt with
 `--disable-openal`** — gz's av is video encoding only; the openal audio-input backend
-is unused (`7551d853`).
+is unused (`2e578ac9`).
 
 ### The Ruby 4.0 gem war (the gz CLI)
 The `gz` CLI (gz-tools) is Ruby: `yaml`/psych ✓ (weak dep, added explicitly) but

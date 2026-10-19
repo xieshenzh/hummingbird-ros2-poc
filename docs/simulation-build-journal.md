@@ -448,10 +448,10 @@ sim time. Round-trip verified.**
 
 | Repo | Commit | Content |
 |---|---|---|
-| hummingbird-rpms | `c920116f` | Tier B (11 specs) + gz-sim-vendor + fixed gz-common + generator quoting fixes |
-| hummingbird-rpms | `7551d853` | `rubygem4.0-fiddle` enabler + ffmpeg `--disable-openal` |
-| hummingbird-ros2-poc | `94ca247` | `images/simulation-rpms/` (Dockerfile + .gitignore) + docs |
-| hummingbird-ros2-poc | `b469ca2` | artifacts.md: archived + loaded into the macOS machine |
+| hummingbird-rpms | `8647926c` | Tier B (11 specs) + gz-sim-vendor + fixed gz-common + generator quoting fixes |
+| hummingbird-rpms | `2e578ac9` | `rubygem4.0-fiddle` enabler + ffmpeg `--disable-openal` |
+| hummingbird-ros2-poc | `8e47915` | `images/simulation-rpms/` (Dockerfile + .gitignore) + docs |
+| hummingbird-ros2-poc | `6476fa5` | artifacts.md: archived + loaded into the macOS machine |
 
 Artifacts: `artifacts/simulation-rpms-rt-fc44-aarch64.oci.tar.gz`
 (1.5 GB). Harness scripts (gitignored scratch, referenced by the docs):
@@ -475,7 +475,7 @@ bridge-test.sh, falling.sdf, ruby-dryrun.sh, core-dryrun.sh}`.
 | 10 | `Some (but not all) targets already defined` | my module-mode Protobuf find vs gz's config-mode find | do NOT pre-find Protobuf |
 | 11 | `_gz_cmake_parse_arguments` unknown | FindCPPZMQ depends on gz-cmake3's helpers | `find_package(gz-cmake3 REQUIRED)` + prefix/module-path hints |
 | 12 | `Qt5Config.cmake` not found (ros_gz_sim) | its config chain reaches gz-gui8→find_package(Qt5) | Qt5 devel trio BR |
-| 13 | fmt-11 vs fmt-12 conflict | openal-soft (via libavdevice-free←gz-common av) links fmt-11; spdlog 1.17 needs fmt-12 | ffmpeg `--disable-openal` — spec `7551d853` |
+| 13 | fmt-11 vs fmt-12 conflict | openal-soft (via libavdevice-free←gz-common av) links fmt-11; spdlog 1.17 needs fmt-12 | ffmpeg `--disable-openal` — spec `2e578ac9` |
 | 14 | ruby3.3/3.4/4.0 default-gems conflicts | parallel ruby streams pulled by weak deps | `install_weak_deps=0` — Dockerfile |
 | 15 | gz CLI: `psych` missing | not a Ruby 4.0 default gem; weak-dep-suppressed | explicit `rubygem4.0-psych` |
 | 16 | gz CLI: `fiddle` missing | externalized from Ruby 4.0; absent from the Hummingbird repo | **new enabler RPM `rubygem4.0-fiddle`** |
