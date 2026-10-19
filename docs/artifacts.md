@@ -89,10 +89,12 @@ were built). The older pre-spdlog-fix `ros-base-rpms-rt:latest` (2.51 GB,
 |---|---|
 | `hummingbird-ros2-poc/simulation-rpms-rt-chunked:fc44-aarch64` | the 2026-10-19 GUI-runtime + parity rebuild (2.49 GB, chunked; lint 14/1/0) |
 | `hummingbird-ros2-poc/simulation-rpms-rt-chunked:fc44` / `:latest` | OCI indexes wrapping the aarch64 image |
+| `hummingbird-ros2-poc/ros-base-rpms-rt-chunked:fc44-aarch64` | ros-base RT (chunked 2.52→1.73 GB, 2026-10-16 build, spdlog-fixed) |
+| `hummingbird-ros2-poc/ros-base-rpms-rt-chunked:fc44` / `:latest` | OCI index (arm64) |
+| `hummingbird-ros2-poc/ros-core-rpms-rt-chunked:fc44-aarch64` / `:fc44-x86_64` | ros-core RT (chunked, both arches) |
+| `hummingbird-ros2-poc/ros-core-rpms-rt-chunked:fc44` / `:latest` | OCI indexes (amd64 + arm64) |
 
-(The ros-core/ros-base chunked images carry matching local tags
-`quay.io/xiezhang7/hummingbird-ros2-poc/…` — same layout, pushed from the
-macOS podman machine.)
+All pushed from the macOS podman machine and registry-verified.
 
 ## Notes
 
