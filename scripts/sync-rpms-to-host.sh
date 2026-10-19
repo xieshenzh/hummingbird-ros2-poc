@@ -25,12 +25,24 @@ limactl shell fedora -- bash -lc \
   | tar xf -
 
 # 3) Clean macOS AppleDouble/junk, stage, commit (no push).
+# Optional attribution trailer for the commit — e.g. when an AI assistant
+# drives the sync:
+#   SYNC_TRAILER="Assisted-by: <who> <noreply@example.com>" \
+#     ./sync-rpms-to-host.sh "commit message"
+# Default: NO extra trailer. (This script previously hardcoded a
+# "Co-Authored-By: Claude" trailer onto every commit regardless of which
+# assistant — or human — ran it, mis-attributing the work; keep attribution
+# with whoever actually drives the sync.)
 find rpms/ros-jazzy-* -name '._*' -delete 2>/dev/null || true
 find rpms -name '.DS_Store' -delete 2>/dev/null || true
 git add rpms/ros-jazzy-*
 if git diff --cached --quiet; then
   echo "nothing to commit"
 else
-  git commit -q -m "$MSG" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+  if [ -n "${SYNC_TRAILER:-}" ]; then
+    git commit -q -m "$MSG" -m "$SYNC_TRAILER"
+  else
+    git commit -q -m "$MSG"
+  fi
   git log --oneline -1
 fi
