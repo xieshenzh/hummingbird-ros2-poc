@@ -5,7 +5,9 @@
 > [`ros-base-rpms.md`](ros-base-rpms.md). Supersedes the COPR/isolated-sysroot
 > `sim-bundle` workaround ([`simulation-gazebo.md`](simulation-gazebo.md)) with a
 > native, multi-arch, base-consistent build. **Status: mapped 2026-10-15; build
-> of the leaf vendor in progress.**
+> of the leaf vendor in progress.** For the complete, chronological record of
+> the 2026-10-16 build-through (every failure and fix), see
+> [`simulation-build-journal.md`](simulation-build-journal.md).
 
 ## Target
 
