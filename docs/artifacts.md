@@ -83,6 +83,17 @@ were built). The older pre-spdlog-fix `ros-base-rpms-rt:latest` (2.51 GB,
 2026-10-15) is still in the macOS machine's store, as is the superseded
 2026-10-16 `simulation-rpms-rt:latest` (3.43 GB, untagged from `:fc44-aarch64`).
 
+## Pushed to quay.io/xiezhang7 (2026-10-19)
+
+| Repo:tag | what |
+|---|---|
+| `hummingbird-ros2-poc/simulation-rpms-rt-chunked:fc44-aarch64` | the 2026-10-19 GUI-runtime + parity rebuild (2.49 GB, chunked; lint 14/1/0) |
+| `hummingbird-ros2-poc/simulation-rpms-rt-chunked:fc44` / `:latest` | OCI indexes wrapping the aarch64 image |
+
+(The ros-core/ros-base chunked images carry matching local tags
+`quay.io/xiezhang7/hummingbird-ros2-poc/…` — same layout, pushed from the
+macOS podman machine.)
+
 ## Notes
 
 - fc43 was built before the base moved to fc44; fc44 was rebuilt on **both** arches

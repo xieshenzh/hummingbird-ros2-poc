@@ -580,3 +580,5 @@ flag `--req`, not the older `--string`).
 - Loaded into the macOS podman machine (the XDG-export trap applies):
   `simulation-rpms-rt:fc44-aarch64` (now the chunked image) +
   `-chunked:fc44-aarch64` + `-chunked:latest`.
+- Pushed to **quay.io/xiezhang7/hummingbird-ros2-poc/simulation-rpms-rt-chunked**
+  (`:fc44-aarch64` + `:fc44`/`:latest` OCI indexes) — registry-verified.
