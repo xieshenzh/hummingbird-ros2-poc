@@ -79,9 +79,17 @@ base-switch/ros-base images from Oct 13–15 are still there too):
 
 The Lima `fedora` VM's rootless podman also carries both fresh ros-base tags plus
 `simulation-rpms-rt:latest` and `simulation-rpms-rt-chunked:latest` (where they
-were built). The older pre-spdlog-fix `ros-base-rpms-rt:latest` (2.51 GB,
-2026-10-15) is still in the macOS machine's store, as is the superseded
-2026-10-16 `simulation-rpms-rt:latest` (3.43 GB, untagged from `:fc44-aarch64`).
+were built). **2026-10-19 cleanup:** the mock build trees
+(`~/hummingbird-rpms/builds/`, 35 GB — chroots + input copies; every final RPM
+verified present in `ros-local-rpms`/staging first, only debug packages un-staged),
+rebuild-intermediate dangling images, and the one-shot login/test-dev variants
+were removed from the VM (34→14 GB used); the stale pre-spdlog-fix
+`ros-base-rpms-rt:latest` and the superseded 2026-10-16
+`simulation-rpms-rt:latest` were removed from the macOS machine (29.5→22.6 GB),
+with both `:latest` tags re-pointed at the current `:fc44-aarch64` builds. The
+full rebuild chain is intact: specs + source tarballs (`hummingbird-rpms`),
+`ros-local-rpms` repo, per-image RPM staging in `images/*/rpms*`, the
+rpm-build-pipeline env + chunkah images, and the git-committed Dockerfiles.
 
 ## Pushed to quay.io/xiezhang7 (2026-10-19)
 
