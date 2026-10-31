@@ -1,0 +1,29 @@
+header:
+  version: 16
+
+machine: qemuarm64
+distro: poky
+target: hb-bootc-image
+
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    refspec: scarthgap
+    layers:
+      meta:
+      meta-poky:
+  meta-hb-bootc:
+    path: meta-hb-bootc
+
+local_conf_header:
+  hb-rt-kernel: |
+    PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt"
+  hb-systemd: |
+    # bootc requires systemd as pid1 (poky defaults to sysvinit)
+    INIT_MANAGER = "systemd"
+  hb-image: |
+    EXTRA_IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+    # must be global: the kernel recipe reads it to build/deploy the
+    # initramfs alongside the kernel
+    INITRAMFS_IMAGE = "initramfs-hb-bootc"
+    # bootc/ostree want the usrmerge layout (/lib -> /usr/lib), poky default

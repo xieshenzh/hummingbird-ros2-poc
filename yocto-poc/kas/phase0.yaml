@@ -1,0 +1,23 @@
+header:
+  version: 16
+
+machine: qemuarm64
+distro: poky
+target: core-image-minimal
+
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    refspec: scarthgap
+    layers:
+      meta:
+      meta-poky:
+
+local_conf_header:
+  hb-rt-kernel: |
+    # Full PREEMPT_RT kernel (linux-yocto-rt, 6.6-rt series)
+    PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt"
+  hb-image: |
+    # Serial console + a shell-friendly minimal image
+    EXTRA_IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+    IMAGE_INSTALL:append = " rt-tests kernel-modules"
