@@ -270,3 +270,83 @@ bootccheck-deployed.py: serial-console pexpect is echo-heavy — the echoed
 command line contains the prompt pattern and literal `$?` markers. Output
 is captured via `cmd > /tmp/hbout` + `cat` with a `HB$?DONE` sentinel that
 only the executed line (HB<rc>DONE) can match.
+
+## Phase 2: bootc upgrade + interrupted-upgrade (2026-11-02, DONE)
+
+v2 → v3 via `bootc switch` on the booted disk, verified end to end
+(`scripts/phase2-upgrade-test.py`), plus a SIGKILL-mid-upgrade test
+(`scripts/phase2-interrupt-test.py`). Both PASS.
+
+### What was built
+
+- **v3 image**: one-recipe bump only — `HB_VERSION` in hb-bootc-image.bb
+  stamps `/etc/hb-version`. Wrap+push to the local registry as before.
+  Caught mid-test: the first "v2" rebuild already carried the v3 stamp
+  (both commits said v3, `ostree diff` empty) — the version assertion was
+  vacuous. Rebuilt a true v2 (stamp `v2`) and re-ran everything clean.
+- **static skopeo baked into the image**: bootc's pull path
+  (ostree-ext ImageProxy → containers-image-proxy) shells out to a
+  `skopeo` binary the minimal image doesn't have — `bootc switch` died
+  with "Creating importer: i/o error: No such file or directory".
+  Built skopeo v1.16.1 static (CGO_ENABLED=0, build tag
+  `containers_image_openpgp` to drop gpgme) and the wrap script bakes it
+  at /usr/bin/skopeo. Productization gap: use a proper OE recipe
+  (meta-virtualization has skopeo) instead of /tmp/skopeo-static.
+- Registry reachability: guest reaches the VM registry via the qemu
+  user-net gateway 10.0.2.2:5000 (guest's own localhost:5000 is
+  unreachable). The image's registries.conf ships both.
+
+### Hard-won facts
+
+1. **bootc switch rewrites the boot layout** (loader.1 → loader.0, and a
+   mirror at boot/loader). Any previously exported kargs are stale —
+   "ostree-prepare-root: Couldn't find specified OSTree root .../boot.1/...".
+   The test exports boot assets from the disk before every boot,
+   selecting the deployment by its `.origin`
+   (container-image-reference=...:vN) — NOT by dir name, BLS mtime, or
+   deploy-dir mtime (booting a deployment touches its dir).
+2. **bootc-switch-created deployments have NO `sysroot` entry** (the
+   Phase 1 install-time fix replaced a symlink; switch deployments have
+   nothing at all) → prepare-root's physical-root bind
+   (mount(root, /sysroot.tmp/sysroot), ostree-prepare-root.c:427) fails
+   ENOENT. Fix: repair from the HOST on the rw loop mount (chattr -i, rm
+   -f, mkdir) — /sysroot is read-only in the running guest, so a
+   guest-side fix silently fails. Deployments are created at serial
+   subindices (.0, .1, .2...), so glob `deploy/*/`.
+3. **A backgrounded `bootc switch` fails on its own** with "invalid
+   reference format" from the image proxy (foreground to the same
+   reference works). To kill mid-transaction, run the switch in the
+   foreground and arm a background watcher:
+   `(sleep 5; kill -9 $(pgrep -f 'bootc switch')) & bootc switch ...`.
+4. **Guest-side TOML writes are a quoting minefield**: writing
+   registries.conf via `echo "registries = [\"10.0.2.2:5000\"]"` loses
+   the inner quotes at some layer → unquoted `10.0.2.2:5000` → TOML
+   "Invalid float value" (or a confusing "invalid reference format" from
+   the pull path). Use `printf '%s\n' '...' '...'` with single-quoted
+   args and cat the file back to verify.
+5. **Non-fatal bootc error**: switch/upgrade prints `ERROR Switching:
+   Staging: Pruning: Listing images: No such file or directory` (prune
+   stage, after successful staging) — judge success by the staged
+   deployment in `bootc status --json`, not by absence of stderr.
+6. BusyBox `head` doesn't take `-40` (use `head -n 40`).
+
+### Measured delta (one-recipe bump v2 → v3)
+
+- `ostree diff` rollback→booted: exactly one modified file,
+  `/usr/etc/hb-version` (v2\n → v3\n).
+- Registry images: 197 MB each (v1 without skopeo: 160 MB; the static
+  skopeo costs ~19 MB uncompressed). Layer delta between v2 and v3 is
+  just the stamp file.
+
+### Interrupted upgrade (kill -9 mid-pull)
+
+Switch to v1 (never pulled by this disk → real 61 MB fetch over qemu
+user-net), SIGKILL 5 s in — bootc dies mid-"Fetched layers". After: the
+booted deployment is untouched (`bootc status` unchanged), and a reboot
+comes up cleanly on the same deployment with PREEMPT_RT. Transactional
+safety holds: the staged/partial state never affects the running system.
+
+Also observed: an interrupted switch can leave a partial deployment as
+the boot default — the interrupt test re-runs the host-side sysroot
+repair + asset export before every boot, which is also what a real
+bootloader rollback path (booting the previous BLS entry) exercises.

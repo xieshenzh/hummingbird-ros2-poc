@@ -55,11 +55,23 @@ sudo ln -sfn sysroot/ostree "$WORK/ostree"
 sudo mkdir -p "$WORK/usr/etc/containers"
 sudo tee "$WORK/usr/etc/containers/registries.conf" >/dev/null <<'EOF'
 [registries.insecure]
-registries = ["localhost:5000"]
+# localhost: the VM-side install/registry; 10.0.2.2: qemu user-net gateway
+# — a booted guest reaches the same registry through it (bootc switch/upgrade)
+registries = ["localhost:5000", "10.0.2.2:5000"]
 EOF
 sudo tee "$WORK/usr/etc/containers/policy.json" >/dev/null <<'EOF'
 {"default":[{"type":"insecureAcceptAnything"}]}
 EOF
+
+# 6. skopeo: bootc's pull path (ostree-ext image proxy) shells out to a
+# `skopeo` binary; the minimal image doesn't build one. Bake the static
+# CGO=0 build (see docs/journal.md Phase 2) — productization would use a
+# proper OE recipe (meta-virtualization) instead.
+if [ -x /tmp/skopeo-static ]; then
+    sudo install -m 0755 /tmp/skopeo-static "$WORK/usr/bin/skopeo"
+else
+    echo "WARNING: /tmp/skopeo-static missing — image won't be able to pull" >&2
+fi
 
 # 5. commit + encapsulate
 sudo ostree init --repo="$REPO" --mode=archive 2>/dev/null || true
@@ -68,10 +80,11 @@ sudo rm -rf "$OCIDIR"
 sudo "$HOME/ostree-encap/target/release/ostree-encap" "$REPO" hb/bootc/"$TAG" "oci:$OCIDIR:$TAG"
 
 # 6. into podman + local registry
+# rmi may fail if a tag isn't in local storage — that's fine, the pull
+# below re-fetches/overwrites
 sudo podman rmi -f "hb-bootc-ostree:$TAG" "$REG:$TAG" 2>/dev/null || true
-sudo podman pull -q "oci:$OCIDIR:$TAG" >/dev/null
-ID=$(sudo podman images --format "{{.ID}} {{.Repository}}" | awk -v t="$TAG" '$2 ~ /latest|oci/ {print $1; exit}')
-sudo podman tag "$(sudo podman images -q | head -1)" "hb-bootc-ostree:$TAG"
+ID=$(sudo podman pull -q "oci:$OCIDIR:$TAG")
+sudo podman tag "$ID" "hb-bootc-ostree:$TAG"
 sudo podman push --tls-verify=false "hb-bootc-ostree:$TAG" "$REG:$TAG" >/dev/null
 echo "pushed $REG:$TAG"
 sudo podman run --rm "hb-bootc-ostree:$TAG" bootc container lint

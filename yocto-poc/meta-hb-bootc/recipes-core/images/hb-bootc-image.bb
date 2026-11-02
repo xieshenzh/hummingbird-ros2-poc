@@ -18,7 +18,14 @@ IMAGE_INSTALL:append = " \
 #  - initramfs alongside it
 #  - BLS entry in /boot/loader/entries
 #  - /usr/lib/ostree/prepare-root.conf enabling the ostree boot path
-ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; "
+ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_version_stamp; "
+
+# Phase 2 upgrade marker: the one-file delta between image versions.
+# Bump per release; visible as /etc/hb-version on the deployed system.
+HB_VERSION ?= "v3"
+hb_version_stamp() {
+    echo "${HB_VERSION}" > ${IMAGE_ROOTFS}/etc/hb-version
+}
 
 hb_bootc_layout() {
     # KERNEL_VERSION is not expanded here — derive it from the modules the
