@@ -574,3 +574,15 @@ docker image class:
 Both new classes implement command sequences already proven by the
 scripts; only the bitbake wiring (fakeroot env, task ordering, deploy
 paths) awaits validation at the next image bake on a real build host.
+
+### Phase 3 refactor 3: de-hardcode the bbclasses (2026-11-03)
+
+The three classes were reworked to be recipe-agnostic rather than
+PoC-shaped: hb-bootc now discovers the kernel via the machine's
+KERNEL_IMAGETYPE and the initramfs via INITRAMFS_IMAGE (no qemuarm64
+names), takes BLS title/kargs from HB_BOOTC_TITLE/HB_BOOTC_KARGS, and
+the lsinitrd shim is opt-in (HB_BOOTC_LSINITRD_SHIM). hb-chunkah's
+hybrid base tree is data-driven: HB_HYBRID_BASE_SYMLINKS (now includes
+lib64, so x86_64 usrmerge works) and HB_HYBRID_BASE_MOUNTPOINTS.
+hb-oci gained HB_OCI_OUTPUT_TYPE (oci dir vs oci-archive). Any layered
+bootc image build can now inherit the classes and tune via variables.

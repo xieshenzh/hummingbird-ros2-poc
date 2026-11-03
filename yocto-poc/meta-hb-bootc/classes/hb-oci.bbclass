@@ -1,6 +1,6 @@
 # hb-oci.bbclass — image type "oci": wrap the finished rootfs into a
 # single-layer OCI image with buildah (daemonless; no Dockerfile, no
-# docker daemon), modeled on meta-virtualization's docker image class.
+# docker daemon).
 #
 # Usage (image recipe or local.conf):
 #   IMAGE_CLASSES += "hb-oci"
@@ -20,14 +20,21 @@ IMAGE_CMD:oci = "hb_oci_build"
 
 HB_OCI_BUILDAH ?= "buildah"
 HB_OCI_LABELS ?= "ostree.bootable=1 containers.bootc=1"
+# "oci" = OCI layout directory, "oci-archive" = single-file archive
+HB_OCI_OUTPUT_TYPE ?= "oci"
 
 hb_oci_build() {
     set -euo pipefail
     command -v ${HB_OCI_BUILDAH} >/dev/null 2>&1 \
         || bbfatal "hb-oci: ${HB_OCI_BUILDAH} not found in PATH (install buildah on the build host or set HB_OCI_BUILDAH)"
 
-    local out="${IMGDEPLOYDIR}/${IMAGE_NAME}.oci"
+    local out="${IMGDEPLOYDIR}/${IMAGE_NAME}.${HB_OCI_OUTPUT_TYPE}"
     rm -rf "$out"
+    if [ "${HB_OCI_OUTPUT_TYPE}" = "oci" ]; then
+        out="oci:${out}:${IMAGE_BASENAME}"
+    else
+        out="oci-archive:${out}:${IMAGE_BASENAME}"
+    fi
 
     local ctr="$(${HB_OCI_BUILDAH} from scratch)"
     local mnt="$(${HB_OCI_BUILDAH} mount "$ctr")"
@@ -39,8 +46,7 @@ hb_oci_build() {
         args="$args --label ${lbl}"
     done
     ${HB_OCI_BUILDAH} config $args "$ctr"
-    # oci: transport writes an OCI layout directory
-    ${HB_OCI_BUILDAH} push "$ctr" "oci:${out}:${IMAGE_BASENAME}"
+    ${HB_OCI_BUILDAH} push "$ctr" "$out"
     ${HB_OCI_BUILDAH} rm "$ctr"
-    echo "hb-oci: wrote $out"
+    echo "hb-oci: wrote ${IMGDEPLOYDIR}/${IMAGE_NAME}.${HB_OCI_OUTPUT_TYPE}"
 }

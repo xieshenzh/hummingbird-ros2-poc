@@ -1,30 +1,41 @@
-# hb-chunkah.bbclass — re-split the image rootfs into content-based
-# layers with chunkah, and (optionally) assemble the bootc-installable
-# hybrid image (encapsulated base commit + chunks as derived layers).
+# hb-chunkah.bbclass — re-split an image rootfs into content-based OCI
+# layers with chunkah, and optionally assemble the bootc-installable
+# hybrid (encapsulated base commit + chunks as derived layers).
 #
 # Usage (image recipe or local.conf):
 #   IMAGE_CLASSES += "hb-chunkah"
-#   # optional, needs ostree + ostree-encap on the build host:
-#   HB_CHUNKED_HYBRID = "1"
+#   HB_CHUNKED_HYBRID = "1"     # also build the bootc hybrid
 # Results in ${IMGDEPLOYDIR}:
 #   ${IMAGE_NAME}-chunked.oci   chunkah output (plain chunks)
-#   ${IMAGE_NAME}-hybrid.oci    bootc-1.1.0-installable hybrid (if enabled)
+#   ${IMAGE_NAME}-base.oci      encapsulated base layer (hybrid only)
+#   ${IMAGE_NAME}-hybrid.oci    bootc-installable image (hybrid only)
 #
-# Requires chunkah on the build host PATH (HB_CHUNKAH to override; e.g.
-# `podman run ... chunkah` wrapper). Runs after do_rootfs, before the
-# image type commands, so it sees the final rootfs (all hb-bootc shape
-# fixes applied). NOTE: this wiring has not yet been exercised by a full
-# bake — the identical command sequence is what produced the tested
-# v4k/v5k images via yocto-poc/scripts/.
+# Tunables:
+#   HB_CHUNKAH                 chunkah command (default "chunkah"; wrap a
+#                              containerized run here if needed)
+#   HB_CHUNKED_MAX_LAYERS      chunk count cap (default 32)
+#   HB_CHUNKED_LABELS          labels carried into the chunked image
+#   HB_HYBRID_BASE_SYMLINKS    compat symlinks baked into the base commit
+#                              ("name:target" pairs; defaults cover both
+#                              usrmerge depths, incl. lib64)
+#   HB_HYBRID_BASE_MOUNTPOINTS dirs ensured in the base commit (ostree
+#                              cannot store empty dirs -> .hb-keep
+#                              placeholders, shadowed by runtime mounts)
+#
+# Requires chunkah on the build host PATH; the hybrid additionally needs
+# ostree and ostree-encap. NOT yet exercised by a full bake — the
+# identical command sequence produced the tested v4k/v5k images.
 
 HB_CHUNKAH ?= "chunkah"
 HB_CHUNKED_MAX_LAYERS ?= "32"
 HB_CHUNKED_HYBRID ?= "0"
 HB_CHUNKED_LABELS ?= "ostree.bootable=1 containers.bootc=1"
-# assembler ships with the layer (meta-hb-bootc/scripts/)
-HB_CHUNKED_ASSEMBLE ?= "${@os.path.join(os.path.dirname(d.getVar('FILE')), '..', 'scripts', 'assemble-chunked-bootc.py')}"
+HB_HYBRID_BASE_SYMLINKS ?= "bin:usr/bin sbin:usr/sbin lib:usr/lib lib64:usr/lib64 opt:usr/opt root:var/root home:var/home srv:var/srv ostree:sysroot/ostree"
+HB_HYBRID_BASE_MOUNTPOINTS ?= "dev proc sys boot run tmp"
 HB_OSTREE ?= "ostree"
 HB_OSTREE_ENCAP ?= "${HOME}/ostree-encap/target/release/ostree-encap"
+# assembler ships with the layer (meta-hb-bootc/scripts/)
+HB_CHUNKED_ASSEMBLE ?= "${@os.path.join(os.path.dirname(d.getVar('FILE')), '..', 'scripts', 'assemble-chunked-bootc.py')}"
 
 addtask image_chunk after do_rootfs before do_image
 do_image_chunk[dirs] = "${IMGDEPLOYDIR}"
@@ -52,22 +63,20 @@ PY
         command -v ${HB_OSTREE} >/dev/null 2>&1 || bbfatal "hb-chunkah: ostree not found"
         [ -x "${HB_OSTREE_ENCAP}" ] || bbfatal "hb-chunkah: ostree-encap not found at ${HB_OSTREE_ENCAP} (set HB_OSTREE_ENCAP)"
 
-        # encapsulated near-empty base commit: compat symlinks + mountpoint
-        # placeholders (see build-encap-base.sh / journal Phase 3)
+        # encapsulated near-empty base commit carrying exactly what the
+        # derived-layer import drops (see journal Phase 3 for the why)
         local tree="${WORKDIR}/hb-base-tree" repo="${WORKDIR}/hb-base-repo"
         local base="${IMGDEPLOYDIR}/${IMAGE_NAME}-base.oci"
         rm -rf "$tree" "$repo" "$base"
         mkdir -p "$tree"
-        ln -sfn usr/bin "$tree/bin"
-        ln -sfn usr/lib "$tree/lib"
-        ln -sfn usr/sbin "$tree/sbin"
-        ln -sfn usr/opt "$tree/opt"
-        ln -sfn var/root "$tree/root"
-        ln -sfn var/home "$tree/home"
-        ln -sfn var/srv "$tree/srv"
-        ln -sfn sysroot/ostree "$tree/ostree"
+        local pair name target
+        for pair in ${HB_HYBRID_BASE_SYMLINKS}; do
+            name="${pair%%:*}"
+            target="${pair#*:}"
+            ln -sfn "$target" "$tree/$name"
+        done
         local d
-        for d in dev proc sys boot run tmp; do
+        for d in ${HB_HYBRID_BASE_MOUNTPOINTS}; do
             mkdir -p "$tree/$d"
             touch "$tree/$d/.hb-keep"
         done

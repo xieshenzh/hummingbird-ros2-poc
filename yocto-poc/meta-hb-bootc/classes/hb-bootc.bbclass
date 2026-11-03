@@ -1,66 +1,86 @@
-# hb-bootc.bbclass — make an image recipe produce a bootc-bootable rootfs.
+# hb-bootc.bbclass — make any image recipe produce a bootc-bootable rootfs.
 #
-# Everything here runs at rootfs time (ROOTFS_POSTPROCESS_COMMAND), so the
-# shape fixes apply to every artifact: tarball, plain container, chunked
-# container, ext4.
+# Runs entirely at rootfs time (ROOTFS_POSTPROCESS_COMMAND), so the shape
+# applies to every artifact: tarball, plain container, chunked container,
+# ext4. Inheritable by any image (minimal, ros, custom).
 #
-# Bootc contract pieces:
-#  - kernel image at /usr/lib/modules/$kver/vmlinuz + initramfs alongside
+# What it guarantees (the bootc/ostree container contract):
+#  - kernel + initramfs at /usr/lib/modules/$kver/{vmlinuz,initramfs.img}
 #  - BLS entry in /boot/loader/entries
-#  - /usr/lib/ostree/prepare-root.conf enabling the ostree boot path
-#  - /opt -> /usr/opt (bootc-standard usr layout; ostree-ext's
-#    derived-layer tar filter drops non-usr/etc/var toplevels)
-#  - no hardlink groups (chunkah may split a group across layers and
-#    ostree's per-layer import then fails on the far-side link)
-#  - /etc/hb-version stamp (the one-file delta between image versions)
+#  - /usr/lib/ostree/prepare-root.conf (ostree boot path)
+#  - /opt -> /usr/opt (ostree-ext's derived-layer tar filter drops
+#    non-usr/etc/var toplevels; see journal Phase 3)
+#  - no hardlink groups (chunkers split groups across layers; ostree's
+#    per-layer import then fails on the far-side link)
+#  - /etc/${HB_BOOTC_VERSION_FILE} stamp for version deltas
+#
+# Tunables (all have working defaults):
+#   HB_VERSION               version stamp written to /etc/hb-version
+#   HB_BOOTC_TITLE           BLS entry title
+#   HB_BOOTC_KARGS           kernel args in the BLS entry
+#   HB_BOOTC_LSINITRD_SHIM   install the bootc-image-builder shim (default 1)
+#
+# Kernel image and initramfs are discovered from the deploy dir: the
+# machine's KERNEL_IMAGETYPE for the kernel, and ${INITRAMFS_IMAGE}
+# (if set) for the initramfs — no machine names hardcoded.
 
 ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_bootc_usr_layout; hb_deref_hardlinks; hb_version_stamp; "
 
-# Phase 2 upgrade marker. Bump per release; visible as /etc/hb-version
-# on the deployed system. NOTE: changing this does not reliably
-# invalidate do_rootfs (sstate stamp quirk) — iterate with
-# `bitbake -C rootfs <image>`.
-HB_VERSION ?= "v5"
+HB_BOOTC_TITLE ?= "Hummingbird bootc"
+HB_BOOTC_KARGS ?= "root=/dev/vda rw"
+HB_BOOTC_LSINITRD_SHIM ?= "1"
+HB_BOOTC_VERSION_FILE ?= "hb-version"
+
+# NOTE: changing HB_VERSION does not reliably invalidate do_rootfs
+# (sstate stamp quirk) — iterate with `bitbake -C rootfs <image>`.
+HB_VERSION ?= "v1"
+
 hb_version_stamp() {
-    echo "${HB_VERSION}" > ${IMAGE_ROOTFS}/etc/hb-version
+    echo "${HB_VERSION}" > ${IMAGE_ROOTFS}/etc/${HB_BOOTC_VERSION_FILE}
 }
 
 hb_bootc_layout() {
-    # KERNEL_VERSION is not expanded here — derive it from the modules the
-    # kernel recipe already installed into the rootfs
     local kv="$(ls ${IMAGE_ROOTFS}/usr/lib/modules 2>/dev/null | grep -E '^[0-9]' | head -1)"
     [ -n "${kv}" ] || bbfatal "hb_bootc_layout: no kernel version dir in rootfs"
+
+    # kernel image: the machine's KERNEL_IMAGETYPE, versioned or bare
+    local kimg="${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}-${kv}"
+    [ -e "${kimg}" ] || kimg="${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}"
+    [ -e "${kimg}" ] || bbfatal "hb_bootc_layout: no ${KERNEL_IMAGETYPE} in ${DEPLOY_DIR_IMAGE}"
+
+    # initramfs: from INITRAMFS_IMAGE if the image sets one
+    local initrd=""
+    if [ -n "${INITRAMFS_IMAGE}" ]; then
+        initrd="$(ls ${DEPLOY_DIR_IMAGE}/${INITRAMFS_IMAGE}-*${MACHINE}*.cpio.gz 2>/dev/null | head -1)"
+        [ -n "${initrd}" ] || initrd="$(ls ${DEPLOY_DIR_IMAGE}/${INITRAMFS_IMAGE}*.cpio.gz 2>/dev/null | head -1)"
+    fi
+
     local moddir="${IMAGE_ROOTFS}/usr/lib/modules/${kv}"
     install -d "${moddir}"
-    install -m 0644 "${DEPLOY_DIR_IMAGE}/Image-${kv}" "${moddir}/vmlinuz" \
-        || install -m 0644 "${DEPLOY_DIR_IMAGE}/Image" "${moddir}/vmlinuz"
-    if [ -e "${DEPLOY_DIR_IMAGE}/initramfs-hb-bootc-qemuarm64.cpio.gz" ]; then
-        install -m 0644 "${DEPLOY_DIR_IMAGE}/initramfs-hb-bootc-qemuarm64.cpio.gz" \
-            "${moddir}/initramfs.img"
-    fi
-    install -d "${IMAGE_ROOTFS}/boot/loader/entries"
-    cat > "${IMAGE_ROOTFS}/boot/loader/entries/hb-bootc-${kv}.conf" <<EOF
-title Hummingbird Yocto bootc (linux-yocto-rt)
-version ${kv}
-linux /usr/lib/modules/${kv}/vmlinuz
-initrd /usr/lib/modules/${kv}/initramfs.img
-options root=/dev/vda rw console=ttyAMA0
-EOF
+    install -m 0644 "${kimg}" "${moddir}/vmlinuz"
+    [ -n "${initrd}" ] && install -m 0644 "${initrd}" "${moddir}/initramfs.img"
 
-    # minimal lsinitrd shim: bootc-image-builder inspects the initramfs
-    # module list with `lsinitrd --mod ...`; our initramfs is initramfs-
-    # framework (not dracut), so report the kernel's builtin modules
-    install -d "${IMAGE_ROOTFS}/usr/bin"
-    cat > "${IMAGE_ROOTFS}/usr/bin/lsinitrd" <<'EOS'
+    install -d "${IMAGE_ROOTFS}/boot/loader/entries"
+    {
+        echo "title ${HB_BOOTC_TITLE}"
+        echo "version ${kv}"
+        echo "linux /usr/lib/modules/${kv}/vmlinuz"
+        [ -n "${initrd}" ] && echo "initrd /usr/lib/modules/${kv}/initramfs.img"
+        echo "options ${HB_BOOTC_KARGS}"
+    } > "${IMAGE_ROOTFS}/boot/loader/entries/hb-bootc-${kv}.conf"
+
+    if [ "${HB_BOOTC_LSINITRD_SHIM}" = "1" ]; then
+        # bootc-image-builder inspects the initramfs with `lsinitrd
+        # --mod ...`; initramfs-framework images aren't dracut, so
+        # report the kernel's builtin modules instead
+        install -d "${IMAGE_ROOTFS}/usr/bin"
+        cat > "${IMAGE_ROOTFS}/usr/bin/lsinitrd" <<'EOS'
 #!/bin/sh
-# PoC shim for bootc-image-builder's initramfs inspection
 KV=""
-FILE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --kver) KV="$2"; shift 2 ;;
-        --mod) shift ;;
-        *) FILE="$1"; shift ;;
+        *) shift ;;
     esac
 done
 if [ -n "$KV" ] && [ -f "/usr/lib/modules/$KV/modules.builtin" ]; then
@@ -68,7 +88,9 @@ if [ -n "$KV" ] && [ -f "/usr/lib/modules/$KV/modules.builtin" ]; then
 fi
 exit 0
 EOS
-    chmod 0755 "${IMAGE_ROOTFS}/usr/bin/lsinitrd"
+        chmod 0755 "${IMAGE_ROOTFS}/usr/bin/lsinitrd"
+    fi
+
     install -d "${IMAGE_ROOTFS}/usr/lib/ostree"
     cat > "${IMAGE_ROOTFS}/usr/lib/ostree/prepare-root.conf" <<EOF
 [composefs]
