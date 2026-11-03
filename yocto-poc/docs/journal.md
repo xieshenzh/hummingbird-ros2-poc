@@ -523,3 +523,28 @@ where the base layer predates the placeholder fix.
 Phase 3 status: **DONE** — chunkah-rechunked Yocto bootc images are
 installable, bootable, and transactionally upgradable under bootc
 1.1.0, with 32/33 layers shared across image versions.
+
+### Phase 3 refactor: rootfs fixes moved into the build (2026-11-03)
+
+Follow-up to the chunking work: two of the end-of-pipeline patches were
+really rootfs *shape* problems, so they now run at image build time and
+apply to every artifact (tarball, plain image, chunked image):
+
+- `hb_bootc_usr_layout` (hb-bootc-image.bb): /opt → /usr/opt + compat
+  symlink. Was a manual step in wrap-plain-container.sh.
+- `hb_deref_hardlinks`: breaks bitbake/sstate hardlink groups (cp -p
+  round-trip per file). Was a `tar --hard-dereference` round-trip.
+
+Validated standalone against the pristine v4 rootfs: 1067 hardlinks →
+0, opt symlink resolves, `/opt/ros/jazzy/bin/ros2` intact. The recipe
+wiring itself gets proven at the next bitbake image build.
+
+What deliberately stays at the assembly stage (they are properties of
+the *ostree image format*, not of the rootfs):
+- the encapsulated base commit (now codified in
+  `scripts/build-encap-base.sh` instead of ad-hoc commands; reproduces
+  the exact working base payload — verified entry-for-entry)
+- history entries / `ostree.final-diffid` (assemble-chunked-bootc.py)
+- `bootc-install-target.sh`'s deployment fixups (sysroot dir, runtime
+  mountpoint mkdirs — the latter redundant since the base commit gained
+  `.hb-keep` placeholders, kept for pre-placeholder installs)

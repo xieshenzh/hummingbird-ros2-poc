@@ -43,24 +43,15 @@ sudo rm -rf "$WORK/var/tmp"
 # 4. /ostree symlink for bootc install's /ostree/repo probe
 sudo ln -sfn sysroot/ostree "$WORK/ostree"
 
-# 4b. strip the embedded ostree repo — a chunked image's repo comes from the
-#     assembled encapsulated base layer, not from the rootfs (a repo carried in
-#     the chunks makes bootc install fail with "Multiple commit objects found")
+# 4b. strip any embedded ostree repo (only present when reusing the
+#     rootfs of an ostree-encap image; a fresh Yocto tarball has none).
+#     A repo carried in the chunks makes bootc install fail with
+#     "Multiple commit objects found" — the chunked image's repo comes
+#     from the assembled encapsulated base layer.
 sudo rm -rf "$WORK/sysroot/ostree"
-
-# 4c. usr-merge /opt: ostree-ext's derived-layer import keeps only usr/etc/var
-#     content (tar/write.rs filter); /opt would be silently dropped
-if [ -d "$WORK/opt" ] && [ ! -L "$WORK/opt" ]; then
-    sudo mv "$WORK/opt" "$WORK/usr/opt"
-    sudo ln -sfn usr/opt "$WORK/opt"
-fi
-
-# 4d. break hardlinks in the tree: ostree's per-layer tar import fails on a
-#     hardlink group that chunkah split across layers ("Failed to find object")
-sudo rm -rf "$WORK-deref" && sudo mkdir -p "$WORK-deref"
-sudo tar -C "$WORK" --hard-dereference -c . | sudo tar -C "$WORK-deref" -xpf -
-sudo rm -rf "$WORK"
-WORK="$WORK-deref"
+# NOTE: /opt -> usr/opt and hardlink dereference are done by the image
+# recipe (hb-bootc-image.bb hb_bootc_usr_layout / hb_deref_hardlinks);
+# only pre-recipe rootfs trees need them applied by hand.
 
 # 5. container config baked into the image (bootc overlays /etc/containers)
 sudo mkdir -p "$WORK/usr/etc/containers"

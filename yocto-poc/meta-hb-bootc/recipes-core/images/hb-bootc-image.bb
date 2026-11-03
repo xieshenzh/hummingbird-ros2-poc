@@ -23,13 +23,38 @@ IMAGE_INSTALL:append:ros2 = " ros-core"
 #  - initramfs alongside it
 #  - BLS entry in /boot/loader/entries
 #  - /usr/lib/ostree/prepare-root.conf enabling the ostree boot path
-ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_version_stamp; "
+#  - bootc-standard usr layout (/opt -> usr/opt) and no hardlinks, so the
+#    rootfs survives content-based layer re-splitting (chunkah) and
+#    ostree-ext's derived-layer import (which keeps only usr/etc/var
+#    content and cannot import a hardlink group split across layers)
+ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_bootc_usr_layout; hb_deref_hardlinks; hb_version_stamp; "
 
 # Phase 2 upgrade marker: the one-file delta between image versions.
 # Bump per release; visible as /etc/hb-version on the deployed system.
 HB_VERSION ?= "v5"
 hb_version_stamp() {
     echo "${HB_VERSION}" > ${IMAGE_ROOTFS}/etc/hb-version
+}
+
+# bootc-standard usr layout: ostree container images carry /opt content
+# under /usr/opt with a compat symlink (ostree-ext's derived-layer tar
+# filter silently drops everything outside usr/etc/var otherwise)
+hb_bootc_usr_layout() {
+    if [ -d ${IMAGE_ROOTFS}/opt ] && [ ! -L ${IMAGE_ROOTFS}/opt ]; then
+        install -d ${IMAGE_ROOTFS}/usr
+        mv ${IMAGE_ROOTFS}/opt ${IMAGE_ROOTFS}/usr/opt
+        ln -s usr/opt ${IMAGE_ROOTFS}/opt
+    fi
+}
+
+# break hardlink groups (bitbake/sstate hardlink identical files, e.g.
+# the ament .dsv environment files): chunkah may split a group across
+# layers and ostree's per-layer tar import then fails on the link whose
+# target lives in another layer
+hb_deref_hardlinks() {
+    find ${IMAGE_ROOTFS} -xdev -type f -links +1 | while read -r f; do
+        cp -p "$f" "$f.hb-deref" && mv "$f.hb-deref" "$f"
+    done
 }
 
 hb_bootc_layout() {
