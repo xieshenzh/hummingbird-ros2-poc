@@ -350,3 +350,103 @@ Also observed: an interrupted switch can leave a partial deployment as
 the boot default — the interrupt test re-runs the host-side sysroot
 repair + asset export before every boot, which is also what a real
 bootloader rollback path (booting the previous BLS entry) exercises.
+
+## Phase 1.5a: meta-ros Jazzy ros_core closure (2026-11-02, IN PROGRESS)
+
+Goal: build `ros-image-core` (meta-ros, scarthgap + Jazzy) for qemuarm64,
+standalone first, then fold into hb-bootc-image (1.5b).
+
+### Build host: EC2 c8i? — actually `ubuntu@ec2-3-128-87-0.us-east-2.compute.amazonaws.com`
+
+- x86_64, 16 vCPU, 30 GB RAM, 145 GB gp3 root, **Ubuntu 24.04.5** (picked
+  over AL2023 for first-class Yocto build-host docs; deps via the standard
+  apt list).
+- Sync: `rsync -az yocto-poc/ …:yocto-poc/` (commit e1c33b6 is not pushed —
+  never push without being asked).
+- kas venv: `apt install python3.12-venv` first (Ubuntu 24.04 images lack
+  it), then `python3 -m venv ~/venvs/kas && pip install kas` (kas 5.5).
+- `KAS_WORK_DIR=$HOME/yocto/kas-work` — **mkdir -p it first**: kas's
+  `os.mkdir(ctx.build_dir)` does not create parents (first run died with
+  FileNotFoundError).
+
+### Ubuntu 24.04 AppArmor vs BitBake user namespaces
+
+BitBake sanity check fails: "User namespaces are not usable by BitBake,
+possibly due to AppArmor" (Ubuntu 24.04 restricts unprivileged userns).
+The documented per-binary AppArmor profile (`profile bitbake
+/home/ubuntu/venvs/kas/bin/python3.12 flags=(unconfined) { userns, }`
++ `apparmor_parser -r`) did NOT fix it (kas re-execs via bin/bitbake
+shebang; the exec path never matched). Working fix — global sysctl:
+
+```
+echo kernel.apparmor_restrict_unprivileged_userns=0 | \
+  sudo tee /etc/sysctl.d/99-bitbake.conf && sudo sysctl -p ...
+```
+
+(Instance-scoped PoC build; acceptable. On a hardened host, revisit the
+profile matching the actual exec path.)
+
+### kas/phase1-5.yaml
+
+Replicates meta-ros's reference `kas/oeros-scarthgap-jazzy` combo with the
+exact pins from their `build` branch: OE-core `70dc1594`, bitbake `cff3be6f`
+(2.8), meta-openembedded `b5874ea0`, meta-ros `c93b6b4` (scarthgap); layers
+meta-ros-common + meta-ros2 + meta-ros2-jazzy, distro `ros2`. Deviations:
+- `machine: qemuarm64` (our pipeline target)
+- optional clang / clang-revival / lts-mixins / qt fragments DROPPED — add
+  back only if the closure build demands them
+- `INIT_MANAGER = "systemd"` from the start (hb-bootc needs pid1 systemd;
+  avoids rebuilding the closure in 1.5b)
+- `INHERIT += "rm_work"` (disk headroom), `WARN_QA:remove = "license-exists"`
+
+Build: `nohup kas build kas/phase1-5.yaml > ~/logs/phase1-5-build.log 2>&1`
+— ~7726 tasks; running as of 17:38 UTC 2026-11-02 (task 2046 at the 5-min
+mark).
+
+### Phase 1.5b: hb-bootc-image + ros_core (2026-11-03, BUILT)
+
+- `kas/phase1-5b.yaml` = the 1.5 layer stack + `meta-hb-bootc`, target
+  `hb-bootc-image`, RT kernel + initramfs + systemd as in phase1.yaml.
+- `hb-bootc-image.bb`: `IMAGE_INSTALL:append:ros2 = " ros-core"` — the
+  distro-name override fires only under meta-ros's ros2 distro; the poky
+  phase1 build is untouched. (Checked meta-ros's ros-image-core.bb: the
+  `ros_distro_*` / `*_image` class inherits only affect package recipes
+  and the image basename — an image that just installs the built closure
+  doesn't need them.)
+- **kas path-repo gotcha (EC2):** kas resolved `path: meta-hb-bootc`
+  against `KAS_WORK_DIR` (`${TOPDIR}/../meta-hb-bootc` in bblayers.conf),
+  not the manifest's own tree. Fix: `ln -s ~/yocto-poc/meta-hb-bootc
+  ~/yocto/kas-work/meta-hb-bootc`. Also git-init the rsynced tree so kas
+  can compute the manifest repo root.
+- Result (7 min, 7654/7904 from sstate, 0 errors):
+  `hb-bootc-image-qemuarm64.rootfs.tar.bz2` **100 MB** (491 MB ext4;
+  pre-ROS image was 71 MB tar / 160 MB container). Verified inside the
+  tarball: `opt/ros/jazzy/bin/ros2`, `usr/bin/bootc`,
+  `usr/lib/modules/6.6.147-rt31-yocto-preempt-rt/vmlinuz`,
+  `etc/hb-version`. Kernel = linux-yocto-rt 6.6.147-rt31.
+- Next: pull tarball + kernel + initramfs to the Lima VM, re-run the
+  wrap → bootc install → TCG boot pipeline unchanged.
+
+### Phase 1.5b verification + v4→v5 upgrade (2026-11-03, DONE)
+
+- **Deployed-boot check** (`bootccheck-deployed.py`, extended): the
+  installed v4 disk boots under TCG with PREEMPT_RT, `bootc status
+  --json` reports `type: bootcHost` / booted `localhost:5000/hb-bootc:v4`
+  (digest be12382e…), and — new assertion — `. /opt/ros/jazzy/setup.sh
+  && ros2 --help` works, `ros2 pkg list` = **124 packages**. The ROS
+  check self-skips on images without /opt/ros.
+- **Image-size quirk:** changing `HB_VERSION ?=` in the recipe did NOT
+  invalidate `do_rootfs` (sstate kept serving the old stamp; `bitbake -e`
+  showed the new value but the dry-run said up-to-date). Fix for PoC
+  iteration: `kas shell … -c "bitbake -C rootfs hb-bootc-image"`.
+- `phase2-upgrade-test.py` parameterized: `argv [from_tag] [to_tag]`
+  (defaults v2 v3 — the original run is unchanged).
+- **v4 → v5 `bootc switch`** on the ROS-bearing disk (100 MB tarball /
+  491 MB ext4 per version): PASS — new deployment booted, v4 retained as
+  rollback, `/etc/hb-version` = v5, PREEMPT_RT live. Transactional
+  upgrade semantics hold with the full ROS closure in the image; the
+  one-file delta model still applies (only the stamp changed).
+
+Phase 1.5 status: **DONE** — Yocto source-built ros_core + RT kernel +
+ostree/bootc in one image, booted, ROS-verified, and transactionally
+upgradable.

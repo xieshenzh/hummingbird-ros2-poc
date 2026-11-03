@@ -1,0 +1,78 @@
+# Phase 1.5b: hb-bootc-image + the Jazzy ros_core closure.
+#
+# Same pinned layer stack as phase1-5.yaml (which built the closure
+# standalone), plus our meta-hb-bootc layer, targeting hb-bootc-image:
+# RT kernel + ostree + bootc layout + ros-core (gated on the ros2 distro
+# override in the image recipe). Everything from Phase 1's pipeline should
+# then be re-runnable unchanged on the resulting image.
+header:
+  version: 16
+
+machine: qemuarm64
+distro: "ros2"
+
+defaults:
+  repos:
+    branch: "scarthgap"
+
+repos:
+  openembedded-core:
+    url: "https://github.com/openembedded/openembedded-core.git"
+    commit: "70dc15941dd33270a92d1001174efb3093e79bdf"
+    path: "layers/openembedded-core"
+    layers:
+      meta:
+
+  bitbake:
+    url: "https://github.com/openembedded/bitbake.git"
+    branch: "2.8"
+    commit: "cff3be6f664f8f07a40727ff63eeeb24d6f5e00b"
+    path: "layers/bitbake"
+    layers:
+      bitbake: "disabled"
+
+  meta-openembedded:
+    url: "https://github.com/openembedded/meta-openembedded.git"
+    commit: "b5874ea07d69919d9b40d59f2c2f0bbd24bc3259"
+    path: "layers/meta-openembedded"
+    layers:
+      meta-filesystems:
+      meta-initramfs:
+      meta-multimedia:
+      meta-networking:
+      meta-oe:
+      meta-perl:
+      meta-python:
+      meta-webserver:
+
+  meta-ros:
+    url: "https://github.com/ros/meta-ros.git"
+    commit: "c93b6b4d5e2d1537d179b7c83fd178d76ad6270b"
+    path: "layers/meta-ros"
+    layers:
+      meta-ros-common:
+      meta-ros2:
+      meta-ros2-jazzy:
+
+  meta-hb-bootc:
+    path: meta-hb-bootc
+
+local_conf_header:
+  common: |
+    DISTRO_FEATURES += "usrmerge"
+    INHERIT += "rm_work"
+    INHERIT_DISTRO:remove = "create-spdx"
+    WARN_QA:remove = "license-exists"
+  hb-rt-kernel: |
+    PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt"
+  hb-systemd: |
+    # bootc requires systemd as pid1
+    INIT_MANAGER = "systemd"
+  hb-image: |
+    EXTRA_IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+    # must be global: the kernel recipe reads it to build/deploy the
+    # initramfs alongside the kernel
+    INITRAMFS_IMAGE = "initramfs-hb-bootc"
+
+target:
+  - hb-bootc-image

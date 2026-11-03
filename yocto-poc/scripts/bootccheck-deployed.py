@@ -71,6 +71,19 @@ try:
     if '"type":"bootcHost"' not in out.replace(" ", ""):
         failures.append("bootc status --json: type is not bootcHost")
     print("--- bootc status --json ---\n%s" % out.strip())
+    # ROS closure (Phase 1.5b images): source the workspace and run the CLI.
+    # Skipped for the pre-ROS minimal image.
+    out = run("test -d /opt/ros/jazzy && echo HB-HAS-ROS || true")
+    if "HB-HAS-ROS" in out:
+        out = run(". /opt/ros/jazzy/setup.sh && ros2 --help >/dev/null && "
+                  "echo HB-ROS2-OK; ros2 pkg list | wc -l", timeout=180)
+        if "HB-ROS2-OK" not in out:
+            failures.append("ros2 CLI failed under /opt/ros/jazzy: %s" % out.strip())
+        else:
+            print("\n--- ros2 ---\n%s" % out.strip())
+    else:
+        print("\n(no /opt/ros/jazzy — minimal image, ROS checks skipped)")
+
 finally:
     child.close()
 

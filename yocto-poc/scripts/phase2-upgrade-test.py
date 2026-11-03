@@ -24,7 +24,9 @@ import pexpect
 
 DISK = "/tmp/hb-disk.img"
 REG_GUEST = "10.0.2.2:5000/hb-bootc"   # as seen from inside the guest
-NEW_TAG = "v3"
+# usage: phase2-upgrade-test.py [from_tag] [to_tag]  (default v2 v3)
+FROM_TAG = sys.argv[1] if len(sys.argv) > 1 else "v2"
+NEW_TAG = sys.argv[2] if len(sys.argv) > 2 else "v3"
 
 QEMU = (
     "qemu-system-aarch64 -M virt -cpu cortex-a57 -smp 2 -m 2048 "
@@ -141,7 +143,7 @@ def export_boot_assets(prefix, want_tag=None):
 # export the CURRENT deployment's assets: a previous bootc switch may have
 # rewritten the boot layout (boot.1 -> boot.0) and invalidated the
 # install-time kargs
-export_boot_assets("hb1", want_tag="v2")
+export_boot_assets("hb1", want_tag=FROM_TAG)
 child = boot_and_login("/tmp/hb1-vmlinuz", "/tmp/hb1-initramfs.img",
                        open("/tmp/hb1-kargs").read().strip())
 
@@ -149,8 +151,8 @@ out = run(child, "bootc status --json")
 before = json.loads(out[out.index("{"):])
 booted_img = before["status"]["booted"]["image"]["image"]["image"]
 print("\nbooted before switch: %s" % booted_img)
-if "v2" not in booted_img:
-    failures.append("boot 1: expected v2 booted, got %s" % booted_img)
+if FROM_TAG not in booted_img:
+    failures.append("boot 1: expected %s booted, got %s" % (FROM_TAG, booted_img))
 
 # the v2 image predates the 10.0.2.2 registries.conf entry — add it at
 # runtime (deployment /etc is writable); bootc's pull also needs the
@@ -193,8 +195,8 @@ print("\nbooted after upgrade: %s" % booted["image"]["image"]["image"])
 print("rollback:             %s" % (rollback["image"]["image"]["image"] if rollback else None))
 if NEW_TAG not in booted["image"]["image"]["image"]:
     failures.append("booted image is not %s" % NEW_TAG)
-if not rollback or "v2" not in rollback["image"]["image"]["image"]:
-    failures.append("rollback deployment is not v2")
+if not rollback or FROM_TAG not in rollback["image"]["image"]["image"]:
+    failures.append("rollback deployment is not %s" % FROM_TAG)
 
 out = run(child, "cat /etc/hb-version")
 print("/etc/hb-version: %s" % out.strip())
@@ -214,4 +216,4 @@ child.expect(pexpect.EOF, timeout=120)
 if failures:
     print("\nFAIL:", "; ".join(failures))
     sys.exit(1)
-print("\nPASS: v2 -> v3 bootc switch upgraded transactionally; v2 retained as rollback")
+print("\nPASS: %s -> %s bootc switch upgraded transactionally; %s retained as rollback" % (FROM_TAG, NEW_TAG, FROM_TAG))

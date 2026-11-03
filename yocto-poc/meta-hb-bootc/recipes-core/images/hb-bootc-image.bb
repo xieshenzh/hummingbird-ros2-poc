@@ -13,6 +13,11 @@ IMAGE_INSTALL:append = " \
     util-linux-unshare \
 "
 
+# Phase 1.5b: under the meta-ros "ros2" distro, bake in the Jazzy ros_core
+# closure (same package set ros-image-core installs). Under poky (phase1)
+# the override never fires and the image stays the minimal bootc base.
+IMAGE_INSTALL:append:ros2 = " ros-core"
+
 # bootc contract pieces assembled at rootfs time:
 #  - kernel image at /usr/lib/modules/${KERNEL_VERSION}/vmlinuz
 #  - initramfs alongside it
@@ -22,7 +27,7 @@ ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_version_stamp; "
 
 # Phase 2 upgrade marker: the one-file delta between image versions.
 # Bump per release; visible as /etc/hb-version on the deployed system.
-HB_VERSION ?= "v3"
+HB_VERSION ?= "v5"
 hb_version_stamp() {
     echo "${HB_VERSION}" > ${IMAGE_ROOTFS}/etc/hb-version
 }
