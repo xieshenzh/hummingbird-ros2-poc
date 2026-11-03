@@ -450,3 +450,76 @@ mark).
 Phase 1.5 status: **DONE** — Yocto source-built ros_core + RT kernel +
 ostree/bootc in one image, booted, ROS-verified, and transactionally
 upgradable.
+
+### Phase 3: chunkah rechunking + chunked upgrade test (2026-11-03, DONE)
+
+Goal: rechunk the Yocto bootc images with chunkah (content-based layers,
+like the Fedora stack) and prove install + boot + transactional upgrade
+on the chunked images under bootc 1.1.0.
+
+**The format problem.** bootc 1.1.0 (newest buildable on scarthgap's
+rust 1.75) uses ostree-ext's *encapsulated* image contract
+(`container/store.rs parse_manifest_layout`): layer 0 must be an
+ostree-repo tar ("ostree layer"), the `ostree.final-diffid` label names
+the target layer, layers before/after map to object-store chunks /
+derived plain-tar layers. Three dead ends, each mapped to that code:
+
+1. chunkah-rechunked ostree-encap image: the chunked layer 0 is no
+   longer a valid repo tar → "Missing xattrs reference".
+2. plain single-layer image (podman import) with the label patched to
+   the last layer: a plain tar cannot be unencapsulated → "Commit
+   object not found".
+3. hybrid with a *populated* base commit: chunk layers re-delivered the
+   rootfs's embedded `/sysroot/ostree/repo` objects → `ostree
+   rev-parse --single` (bootc install's source-info probe) saw >1
+   commit → "Multiple commit objects found".
+
+**The working hybrid format** (`assemble-chunked-bootc.py`):
+- layer 0 = ostree-encap'd *near-empty* base commit, built from a tree
+  of just symlinks + placeholder files:
+  - usrmerge/ostree compat symlinks: `bin lib sbin -> usr/…`,
+    `opt -> usr/opt`, `root home srv -> var/…`, `ostree ->
+    sysroot/ostree` (bootc's runtime sysroot probe needs the last one)
+  - `dev proc sys boot run tmp/.hb-keep` — ostree cannot store empty
+    dirs, but the initramfs switch_root and systemd need these
+    mountpoints; `.hb-keep` files are shadowed by the runtime mounts
+- layers 1..N = chunkah chunks (max-layers 32), imported through
+  ostree-ext's **derived-layer** path
+- config: one history entry per layer (`layers_with_history()` demands
+  it — "Truncated history"), `ostree.final-diffid` → the base layer's
+  uncompressed diffID
+
+**Rootfs prep that makes chunks importable** (wrap-plain-container.sh,
+steps 4b-4d): strip `sysroot/ostree` (the repo comes from layer 0);
+move `opt → usr/opt` — ostree-ext's tar filter keeps only
+`usr`/`etc`/`var` content, everything else at top level (including
+compat symlinks) is silently dropped; `tar --hard-dereference`
+round-trip to break hardlink groups (1067 in the ROS rootfs — the
+identical ament `.dsv` env files) that chunkah splits across layers
+("Failed to find object").
+
+`bootc-install-target.sh` still creates `sysroot` as a real dir in each
+deployment (unchanged); it also mkdirs `dev/proc/sys/boot` for installs
+where the base layer predates the placeholder fix.
+
+**Results (v4k/v5k, 33 layers each, 132 MB):**
+- install: PASS — `bootc install to-filesystem` unencapsulates the
+  empty base + imports 32 chunks as derived layers
+- boot: PASS — PREEMPT_RT, `bootc status` type bootcHost, ROS 2 works
+  (`ros2 pkg list` = 124) via `/usr/opt`
+- `bootc switch` v4k→v5k: PASS — **"layers already present: 32; layers
+  needed: 1 (54.0 MB)"**; booted v5k, v4k rollback, `/etc/hb-version`
+  v5. ostree content diff between the two commits: exactly one file,
+  `M /usr/etc/hb-version`.
+- Known wart: `bootc switch` exits 1 at `Pruning: Listing images` —
+  bootc's prune shells out to `podman` (imgstorage.rs `new_image_cmd`),
+  which the minimal Yocto image doesn't carry. Harmless: the new
+  deployment is fully staged. A productized image would add podman or a
+  later bootc would use the image-proxy API.
+- The 54 MB "one layer" is chunkah's bigfile split (kernel/initramfs
+  land in one chunk); the *shared* 32 layers are the compressed content
+  — this is the same shape as the Fedora stack's rechunked images.
+
+Phase 3 status: **DONE** — chunkah-rechunked Yocto bootc images are
+installable, bootable, and transactionally upgradable under bootc
+1.1.0, with 32/33 layers shared across image versions.

@@ -174,7 +174,7 @@ print("staged after switch: %s" % (staged["image"]["image"]["image"] if staged e
 if not staged or NEW_TAG not in staged["image"]["image"]["image"]:
     failures.append("no staged %s deployment after switch" % NEW_TAG)
 
-child.sendline("poweroff")
+child.sendline("systemctl poweroff || busybox poweroff")
 child.expect(pexpect.EOF, timeout=120)
 
 # ---- host: export the new deployment's boot assets ----
@@ -200,7 +200,9 @@ if not rollback or FROM_TAG not in rollback["image"]["image"]["image"]:
 
 out = run(child, "cat /etc/hb-version")
 print("/etc/hb-version: %s" % out.strip())
-if out.strip() != NEW_TAG:
+# image tags may carry a suffix (e.g. chunked variants "v4k"/"v5k"); the
+# recipe writes the bare HB_VERSION
+if out.strip() not in (NEW_TAG, NEW_TAG.rstrip("k")):
     failures.append("/etc/hb-version is %r, expected %r" % (out.strip(), NEW_TAG))
 
 # measured delta: ostree content diff between rollback and booted commits
@@ -210,7 +212,7 @@ if old_c:
     out = run(child, "ostree diff --repo=/sysroot/ostree/repo %s %s | head -n 40" % (old_c, new_c))
     print("\n--- ostree diff (rollback -> booted) ---\n%s" % out.strip())
 
-child.sendline("poweroff")
+child.sendline("systemctl poweroff || busybox poweroff")
 child.expect(pexpect.EOF, timeout=120)
 
 if failures:

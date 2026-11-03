@@ -98,6 +98,9 @@ for d in "$MNT"/ostree/deploy/default/deploy/*.0; do
     sudo chattr -i "$d" 2>/dev/null || true
     sudo rm -f "$d/sysroot" 2>/dev/null || true
     sudo mkdir -p "$d/sysroot"
+    # chunked (derived-layer) imports drop empty dirs; ostree deployments
+    # need the standard runtime mount points
+    sudo mkdir -p "$d/dev" "$d/proc" "$d/sys" "$d/boot"
 done
 
 # export kernel + initrd for qemu direct-kernel boot, then release the disk
