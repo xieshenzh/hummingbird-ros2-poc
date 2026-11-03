@@ -548,3 +548,29 @@ the *ostree image format*, not of the rootfs):
 - `bootc-install-target.sh`'s deployment fixups (sysroot dir, runtime
   mountpoint mkdirs — the latter redundant since the base commit gained
   `.hb-keep` placeholders, kept for pre-placeholder installs)
+
+### Phase 3 refactor 2: bbclasses for bootc / buildah-OCI / chunkah (2026-11-03)
+
+Three classes in meta-hb-bootc/classes/, modeled on meta-virtualization's
+docker image class:
+
+1. `hb-bootc.bbclass` — pure refactor: the rootfs-time bootc layout,
+   usr-merge, hardlink-deref and version-stamp functions moved out of
+   hb-bootc-image.bb (which now just `inherit hb-bootc`), so any image
+   recipe can adopt the bootc shape.
+2. `hb-oci.bbclass` — image type `oci`: wraps the finished rootfs into a
+   single-layer OCI layout with **buildah** (`from scratch` + mount +
+   cp + `push oci:`), daemonless, with the bootc labels. Requires
+   buildah on the build host. NOT yet exercised by a bake — the
+   equivalent flow (rootfs tar → podman import) produced the tested
+   images; watch the fakeroot/pseudo interaction on first use.
+3. `hb-chunkah.bbclass` — `do_image_chunk` (after do_rootfs): chunkah
+   re-split into content-based layers, plus `HB_CHUNKED_HYBRID = "1"`
+   to build the encapsulated base commit (needs ostree + ostree-encap
+   on the host) and assemble the bootc-installable hybrid via
+   meta-hb-bootc/scripts/assemble-chunked-bootc.py (copy of the
+   yocto-poc/scripts version). Also NOT yet exercised by a bake.
+
+Both new classes implement command sequences already proven by the
+scripts; only the bitbake wiring (fakeroot env, task ordering, deploy
+paths) awaits validation at the next image bake on a real build host.
