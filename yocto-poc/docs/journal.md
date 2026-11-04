@@ -586,3 +586,68 @@ hybrid base tree is data-driven: HB_HYBRID_BASE_SYMLINKS (now includes
 lib64, so x86_64 usrmerge works) and HB_HYBRID_BASE_MOUNTPOINTS.
 hb-oci gained HB_OCI_OUTPUT_TYPE (oci dir vs oci-archive). Any layered
 bootc image build can now inherit the classes and tune via variables.
+
+### Phase 3 end-to-end: Yocto builds the layered image (2026-11-03)
+
+`kas/phase3.yaml` (extends phase1-5b) turns the classes on for the
+real image: `IMAGE_CLASSES += "hb-oci hb-chunkah"`, `IMAGE_FSTYPES +=
+"oci"`, `HB_CHUNKED_HYBRID = "1"`. One `kas build` now produces, in
+`tmp-glibc/deploy/images/qemuarm64/`:
+
+- `hb-bootc-image.oci` — single-layer OCI (buildah)
+- `hb-bootc-image-chunked.oci` — 32 chunkah content layers
+- `hb-bootc-image-base.oci` — encapsulated base layer
+- `hb-bootc-image-hybrid.oci` — the 33-layer bootc-installable image
+
+Validated end to end on the Lima VM build host (ROS closure compiled
+from source, ~2.5 h with shared sstate): skopeo-copy the hybrid to the
+registry, `bootc install to-filesystem`, qemu boot (PREEMPT_RT, ROS 2
+Jazzy 124 pkgs, `bootc status` reports the deployment), then `bootc
+switch` v6→v7 with a version-stamp-only bump: staged transactionally,
+v6 retained as rollback. PASS.
+
+Hard-won facts from wiring the classes into bitbake (each cost a failed
+bake):
+
+- **bitbake task PATH ≠ host PATH.** Tasks see only `tmp/hosttools`;
+  chunkah/buildah/ostree/skopeo must be added via
+  `HOSTTOOLS += "chunkah buildah ostree skopeo"` in local.conf.
+- **`$HOME` is a throwaway dir in tasks** (and `kas shell` regenerates
+  local.conf, so hand-appended settings there vanish) — host tool paths
+  like `HB_OSTREE_ENCAP` must be absolute, in the kas yaml.
+- **`${FILE}` in a class resolves to the inheriting recipe**, and
+  `${LAYERDIR}` is only defined while layer.conf parses — the layer
+  captures `HB_LAYERDIR = "${LAYERDIR}"` in layer.conf for classes to
+  use (assembler script path).
+- **Timestamped `${IMAGE_NAME}` breaks cross-task artifact references**
+  (the stamp timestamp changes per build) — the chunk/base/hybrid
+  outputs use stable `${IMAGE_BASENAME}`-based names.
+- **ostree aborts under pseudo** (`pseudo client abort`) — the hybrid
+  assembly is a separate non-fakeroot `do_image_hybrid` task;
+  `do_image_chunk` stays fakeroot so chunkah records root:root.
+- **Fedora's ostree has no `commit --quiet`.**
+- **bitbake's default network isolation** drops every task without a
+  `network` flag into a single-mapping user namespace
+  (`bb.utils.disable_network`) — rootless buildah cannot create its own
+  userns from inside that, dying with
+  `write /proc/<pid>/setgroups: operation not permitted`. Fix:
+  `do_image_oci[network] = "1"` (the flag only avoids the unshare; the
+  task uses no network).
+- **buildah under fakeroot**: pseudo's `LD_PRELOAD` breaks buildah's
+  reexec, its fake passwd (PSEUDO_PASSWD) breaks user lookup, and
+  recipe-sysroot-native's non-setuid newuidmap breaks uid mapping —
+  buildah runs via
+  `env -u LD_PRELOAD PATH=/usr/bin:/bin PSEUDO_DISABLED=1`. Rootless
+  `buildah mount` doesn't work outside `buildah unshare`, so the flow
+  is `from scratch` → `add <rootfs-dir>` (copies CONTENTS to /,
+  rootless uid mapping makes files 0:0) → `config` → `commit` (scratch
+  containers can't be pushed directly) → `push oci:`.
+- **registries.conf must be v2 format** (`[[registry]] location=...
+  insecure = true`); the v1 `[registries.insecure]` form is rejected
+  when bootc reads the image's own config at install time.
+- **bootc 1.1.0's pull path execs a `skopeo` binary** — the minimal
+  image needs one baked (`HB_BOOTC_SKOPEO_STATIC`, static build
+  CGO_ENABLED=0), or `bootc switch` dies with "Creating importer: i/o
+  error: No such file or directory".
+- **`rm_work` deletes the per-recipe IMGDEPLOYDIR**; the artifacts
+  survive in the global deploy dir (written before cleanup).

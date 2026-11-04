@@ -1,0 +1,29 @@
+# Phase 3: end-to-end Yocto build of the LAYERED bootc image.
+#
+# Extends phase1-5b.yaml (minimal bootc + ros_core) with the container
+# artifact classes:
+#   hb-oci     — single-layer OCI image via buildah (IMAGE_FSTYPES oci)
+#   hb-chunkah — chunkah re-split + the bootc-installable hybrid
+#                (encapsulated base commit + chunks as derived layers)
+# The host tools (buildah, chunkah, ostree, ostree-encap) must exist on
+# the build host; HB_OSTREE_ENCAP / HB_CHUNKAH point at them.
+header:
+  version: 16
+  includes:
+    - phase1-5b.yaml
+
+local_conf_header:
+  hb-container-artifacts: |
+    # release version stamped into /etc/hb-version — bump per release
+    HB_VERSION = "v7"
+    IMAGE_CLASSES += "hb-oci hb-chunkah"
+    IMAGE_FSTYPES += "oci"
+    HB_CHUNKED_HYBRID = "1"
+    HB_OCI_OUTPUT_TYPE = "oci"
+    # expose the host tools to bitbake's sanitized task PATH
+    HOSTTOOLS += "chunkah buildah ostree skopeo"
+    # bitbake tasks get a fake $HOME — host tool paths must be absolute
+    HB_OSTREE_ENCAP = "/home/xiezhang.guest/ostree-encap/target/release/ostree-encap"
+    # static skopeo baked into the image: bootc 1.1.0's pull path execs a
+    # skopeo binary the minimal image doesn't carry
+    HB_BOOTC_SKOPEO_STATIC = "/usr/local/share/hb-skopeo-static"

@@ -21,5 +21,9 @@ LICENSE = "MIT"
 IMAGE_FSTYPES = "${INITRAMFS_FSTYPES}"
 inherit core-image
 
+# container artifact classes don't apply to the initramfs (it is not a
+# bootc image; do_image_chunk/hb-oci would run pointlessly on it)
+IMAGE_CLASSES:remove = "hb-oci hb-chunkah"
+
 IMAGE_ROOTFS_SIZE = "8192"
 IMAGE_ROOTFS_EXTRA_SPACE = "0"

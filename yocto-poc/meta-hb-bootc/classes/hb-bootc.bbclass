@@ -24,12 +24,19 @@
 # machine's KERNEL_IMAGETYPE for the kernel, and ${INITRAMFS_IMAGE}
 # (if set) for the initramfs — no machine names hardcoded.
 
-ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_bootc_usr_layout; hb_deref_hardlinks; hb_version_stamp; "
+ROOTFS_POSTPROCESS_COMMAND += "hb_bootc_layout; hb_bootc_usr_layout; hb_deref_hardlinks; hb_bootc_container_cfg; hb_version_stamp; "
 
 HB_BOOTC_TITLE ?= "Hummingbird bootc"
 HB_BOOTC_KARGS ?= "root=/dev/vda rw"
 HB_BOOTC_LSINITRD_SHIM ?= "1"
 HB_BOOTC_VERSION_FILE ?= "hb-version"
+# container-runtime config baked into the image (bootc overlays
+# /etc/containers at install time; the guest needs permissive policy +
+# the build/test registries preconfigured to pull updates)
+HB_BOOTC_CONTAINER_CFG ?= "1"
+HB_BOOTC_INSECURE_REGISTRIES ?= "localhost:5000 10.0.2.2:5000"
+# optional static skopeo copied into the image for bootc's pull path
+HB_BOOTC_SKOPEO_STATIC ?= ""
 
 # NOTE: changing HB_VERSION does not reliably invalidate do_rootfs
 # (sstate stamp quirk) — iterate with `bitbake -C rootfs <image>`.
@@ -112,4 +119,29 @@ hb_deref_hardlinks() {
     find ${IMAGE_ROOTFS} -xdev -type f -links +1 | while read -r f; do
         cp -p "$f" "$f.hb-deref" && mv "$f.hb-deref" "$f"
     done
+}
+
+hb_bootc_container_cfg() {
+    [ "${HB_BOOTC_CONTAINER_CFG}" = "1" ] || return 0
+
+    # no /var/tmp in the layer (ostree deployment provides it)
+    rm -rf ${IMAGE_ROOTFS}/var/tmp
+
+    install -d ${IMAGE_ROOTFS}/etc/containers
+    # v2 format; the v1 [registries.insecure] form is rejected by
+    # bootc/skopeo when the image's own config is read at install time
+    : > ${IMAGE_ROOTFS}/etc/containers/registries.conf
+    local r
+    for r in ${HB_BOOTC_INSECURE_REGISTRIES}; do
+        printf '[[registry]]\nlocation = "%s"\ninsecure = true\n\n' "$r" \
+            >> ${IMAGE_ROOTFS}/etc/containers/registries.conf
+    done
+    cat > ${IMAGE_ROOTFS}/etc/containers/policy.json <<'EOF'
+{"default":[{"type":"insecureAcceptAnything"}]}
+EOF
+
+    if [ -n "${HB_BOOTC_SKOPEO_STATIC}" ]; then
+        [ -e "${HB_BOOTC_SKOPEO_STATIC}" ] || bbfatal "hb_bootc_container_cfg: HB_BOOTC_SKOPEO_STATIC=${HB_BOOTC_SKOPEO_STATIC} not found"
+        install -D -m 0755 "${HB_BOOTC_SKOPEO_STATIC}" ${IMAGE_ROOTFS}/usr/bin/skopeo
+    fi
 }

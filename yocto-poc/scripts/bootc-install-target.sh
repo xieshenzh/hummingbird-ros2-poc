@@ -39,8 +39,9 @@ cat > /tmp/containers-cfg/policy.json <<'EOF'
 {"default":[{"type":"insecureAcceptAnything"}]}
 EOF
 cat > /tmp/containers-cfg/registries.conf <<'EOF'
-[registries.insecure]
-registries = ["localhost:5000"]
+[[registry]]
+location = "localhost:5000"
+insecure = true
 EOF
 cat > /tmp/containers-cfg/containers.conf <<'EOF'
 [engine]
