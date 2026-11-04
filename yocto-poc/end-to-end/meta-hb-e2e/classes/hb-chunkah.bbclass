@@ -23,8 +23,9 @@
 #                              placeholders, shadowed by runtime mounts)
 #
 # Requires chunkah on the build host PATH; the hybrid additionally needs
-# ostree and ostree-encap. NOT yet exercised by a full bake — the
-# identical command sequence produced the tested v4k/v5k images.
+# ostree and ostree-encap. Validated end-to-end by the v6/v7 builds
+# (kas/phase3.yaml in this folder) — see ../../docs/journal.md
+# "Phase 3 end-to-end".
 
 HB_CHUNKAH ?= "chunkah"
 HB_CHUNKED_MAX_LAYERS ?= "32"
@@ -35,9 +36,10 @@ HB_HYBRID_BASE_MOUNTPOINTS ?= "dev proc sys boot run tmp"
 HB_HYBRID_BASE_REF ?= "hb/bootc/base"
 HB_OSTREE ?= "ostree"
 HB_OSTREE_ENCAP ?= "${HOME}/ostree-encap/target/release/ostree-encap"
-# assembler ships with the layer (meta-hb-bootc/scripts/). ${FILE} would
-# resolve to the inheriting recipe — LAYERDIR is the class's own layer.
-HB_CHUNKED_ASSEMBLE ?= "${HB_LAYERDIR}/scripts/assemble-chunked-bootc.py"
+# assembler ships with this layer (meta-hb-e2e/scripts/). ${FILE} would
+# resolve to the inheriting recipe — the layerdir capture in this layer's
+# conf/layer.conf is the class's own location.
+HB_CHUNKED_ASSEMBLE ?= "${HB_E2E_LAYERDIR}/scripts/assemble-chunked-bootc.py"
 
 addtask image_chunk after do_rootfs before do_image
 # chunkah reads the pseudo-owned rootfs and must record root:root in the

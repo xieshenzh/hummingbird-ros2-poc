@@ -1,16 +1,21 @@
 # Phase 3: end-to-end Yocto build of the LAYERED bootc image.
 #
 # Extends phase1-5b.yaml (minimal bootc + ros_core) with the container
-# artifact classes:
+# artifact classes from the meta-hb-e2e layer (this folder):
 #   hb-oci     — single-layer OCI image via buildah (IMAGE_FSTYPES oci)
 #   hb-chunkah — chunkah re-split + the bootc-installable hybrid
 #                (encapsulated base commit + chunks as derived layers)
 # The host tools (buildah, chunkah, ostree, ostree-encap) must exist on
-# the build host; HB_OSTREE_ENCAP / HB_CHUNKAH point at them.
+# the build host; HB_OSTREE_ENCAP points at them (absolute — bitbake
+# tasks get a throwaway $HOME).
 header:
   version: 16
   includes:
-    - phase1-5b.yaml
+    - ../../kas/phase1-5b.yaml
+
+repos:
+  meta-hb-e2e:
+    path: meta-hb-e2e
 
 local_conf_header:
   hb-container-artifacts: |
