@@ -651,3 +651,38 @@ bake):
   error: No such file or directory".
 - **`rm_work` deletes the per-recipe IMGDEPLOYDIR**; the artifacts
   survive in the global deploy dir (written before cleanup).
+
+## Layout reorganization: end-to-end/ folder (2026-11-05)
+
+The Phase 3/4 layered-image work moved out of the base PoC tree into
+`end-to-end/` (commit 396c1ea):
+
+- `hb-oci` / `hb-chunkah` bbclasses + the hybrid assembler moved from
+  `meta-hb-bootc` into a **new classes-only layer, `meta-hb-e2e`** (own
+  `conf/layer.conf`, added to BBLAYERS by the manifest; assembler path
+  resolves via `HB_E2E_LAYERDIR` captured there — the old `HB_LAYERDIR`
+  capture in meta-hb-bootc was removed as unused).
+- `kas/phase3.yaml` → `end-to-end/kas/phase3.yaml`; its include is now
+  `../../kas/phase1-5b.yaml` (kas resolves includes relative to the
+  manifest's own dir).
+- `build-encap-base.sh` + `patch-oci-final-diffid.py` →
+  `end-to-end/scripts/` (format-development helpers; the classes do this
+  in-tree now). The duplicate top-level `assemble-chunked-bootc.py` was
+  dropped — the layer copy is the one `hb-chunkah` invokes.
+- `vm-sync.sh` rsyncs **both** layers into kas-work
+  (`meta-hb-bootc` from the parent tree, `meta-hb-e2e` from end-to-end/).
+- Run: `scripts/vm-sync.sh && scripts/vm-kas.sh build
+  end-to-end/kas/phase3.yaml`. Validation scripts + this journal stay
+  shared in the parent tree (referenced as `../scripts/`, `../docs/`).
+
+A first attempt also duplicated the FULL dependency chain (all kas
+manifests, the whole meta-hb-bootc layer, every script, the journal)
+into the folder to make it standalone — reverted by request
+(7f293c9 → reset): only the end-to-end-PoC-specific files live there;
+the base layer, shared manifests and validation tooling remain single
+copies in the parent tree.
+
+NOTE: not yet re-baked from the new layout — the layer wiring is the
+same mechanism phase1-5b.yaml uses for meta-hb-bootc, but the first
+`vm-sync.sh` + build from `end-to-end/kas/phase3.yaml` should be watched
+as the confirmation.
