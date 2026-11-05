@@ -42,11 +42,13 @@ zero layer-index hits), and ostree-under-poky must be bridged via
 ## Layout
 
 ```
-kas/            kas manifests (phase0.yaml = minimal + RT kernel)
+kas/            kas manifests (phase0.yaml = minimal + RT kernel; phase1-5b = + ros_core)
 meta-hb-bootc/  our OE layer (Phase 1 recipes: bootc, ostree wiring, image)
-end-to-end/     Phase 3/4: the layered-image classes (meta-hb-e2e) + kas/phase3.yaml
+end-to-end/     Phase 3/4: the layered-image PoC — meta-hb-e2e classes layer
+                (hb-oci / hb-chunkah / hybrid assembler) + kas/phase3.yaml + format
+                scripts; see end-to-end/README.md
 scripts/
-  vm-sync.sh    rsync this tree → fedora:~/yocto-poc (source of truth is here)
+  vm-sync.sh    rsync this tree → fedora:~/yocto-poc + both layers → kas-work
   vm-kas.sh     run kas inside the VM (build/tree in ~/yocto, VM-native fs)
 docs/journal.md build journal — every phase, failure, root cause + fix
 ```
@@ -81,3 +83,28 @@ The wrap and install scripts encode every bridge the minimal Yocto image
 needs (usr/etc layout, /var/tmp, long-symlink, /ostree symlink, bootable
 labels; host skopeo/podman/util-linux shims; bootupctl stub) — full
 rationale in docs/journal.md.
+
+## Phase 3/4 pipeline (Yocto → layered bootc image, end to end)
+
+One `kas build` produces all container artifacts in-tree — no out-of-tree
+wrap scripts. The classes come from the `meta-hb-e2e` layer
+(`end-to-end/meta-hb-e2e/`); details in `end-to-end/README.md`.
+
+```bash
+scripts/vm-sync.sh                                    # syncs tree + BOTH layers into kas-work
+scripts/vm-kas.sh build end-to-end/kas/phase3.yaml    # ~2.5 h cold (ROS closure from source)
+# artifacts in ~/yocto/kas-work/build/tmp-glibc/deploy/images/qemuarm64/:
+#   hb-bootc-image.oci           single-layer OCI (buildah)
+#   hb-bootc-image-chunked.oci   32 content-based chunkah layers
+#   hb-bootc-image-hybrid.oci    33-layer bootc-installable image (THE artifact)
+# validate (in the VM):
+skopeo copy oci:.../hb-bootc-image-hybrid.oci docker://localhost:5000/hb-bootc:v7
+bash scripts/bootc-install-target.sh v7               # bootc install to-filesystem
+/usr/bin/python3 scripts/bootccheck-deployed.py       # TCG boot: PREEMPT_RT + ROS + bootc status
+/usr/bin/python3 scripts/phase2-upgrade-test.py v6 v7 # bootc switch + rollback assertion
+```
+
+Build-host prerequisites (chunkah, buildah, ostree, ostree-encap, static
+skopeo — all pinned by absolute path in `end-to-end/kas/phase3.yaml`) and
+every bitbake/pseudo gotcha the classes encode: docs/journal.md,
+"Phase 3 end-to-end". Bump `HB_VERSION` there per release.
