@@ -1,0 +1,35 @@
+header:
+  version: 16
+
+machine: qemuarm64
+distro: poky
+target: generic-chunked-bootc-image
+
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    branch: scarthgap
+    layers:
+      meta:
+      meta-poky:
+  meta-chunked-bootc:
+    path: meta-chunked-bootc
+
+local_conf_header:
+  bootc: |
+    INIT_MANAGER = "systemd"
+    INHERIT += "rm_work"
+    DISTRO_FEATURES += "usrmerge"
+    EXTRA_IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+    PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt"
+    INITRAMFS_IMAGE = "initramfs-generic-bootc"
+    IMAGE_CLASSES += "chunked-bootc-oci chunked-bootc-chunkah"
+    IMAGE_FSTYPES += "oci"
+    CHUNKED_BOOTC_HYBRID = "1"
+    CHUNKED_BOOTC_VERSION = "v1"
+    CHUNKED_BOOTC_MAX_LAYERS = "32"
+    # KAS exposes HOSTTOOLS through a sanitized symlink directory. Use the
+    # real VM path here rather than relying on a potentially stale symlink
+    # selected from /usr/sbin.
+    CHUNKED_BOOTC_OSTREE_ENCAP = "/usr/bin/ostree-encap"
+    HOSTTOOLS += "buildah chunkah ostree ostree-encap skopeo"
