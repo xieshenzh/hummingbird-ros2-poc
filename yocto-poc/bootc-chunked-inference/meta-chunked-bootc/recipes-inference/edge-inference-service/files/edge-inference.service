@@ -1,0 +1,17 @@
+[Unit]
+Description=Generic edge inference service
+After=local-fs.target
+
+[Service]
+Type=simple
+User=edge-inference
+Group=edge-inference
+ExecStart=/usr/bin/edge-inference
+Environment=EDGE_MODEL_PATH=/opt/edge-inference/model/model.json
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run
+
+[Install]
+WantedBy=multi-user.target

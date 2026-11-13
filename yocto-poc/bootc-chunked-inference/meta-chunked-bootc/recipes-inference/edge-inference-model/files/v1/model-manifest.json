@@ -1,0 +1,7 @@
+{
+  "architecture": "aarch64",
+  "format": "json-linear",
+  "model": "edge-linear",
+  "sha256": "08823048d0f8678e9ad1b722482a9cb564e5890b0af7835d479dfcc93ec5168e",
+  "version": "v1"
+}

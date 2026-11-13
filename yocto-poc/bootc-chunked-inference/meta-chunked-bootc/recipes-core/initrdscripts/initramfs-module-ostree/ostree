@@ -1,0 +1,39 @@
+#!/bin/sh
+# initramfs-framework module: ostree prepare-root
+# Runs after 90-rootfs mounted the physical root at $ROOTFS_DIR, before
+# 99-finish switch_roots into it.
+
+ostree_enabled() {
+	return 0
+}
+
+ostree_run() {
+	if [ ! -d $ROOTFS_DIR/ostree/deploy ]; then
+		debug "No ostree deployment on root, skipping prepare-root"
+		return
+	fi
+
+	# prepare-root wants a writable /run for its state files
+	if ! grep -q " /run " /proc/mounts; then
+		mount -t tmpfs tmpfs /run
+	fi
+
+	# prepare-root bind-mounts the physical root onto <deploy>/sysroot,
+	# where <deploy>/sysroot is a symlink to /sysroot — which must exist in
+	# the initramfs for the mount target to resolve
+	mkdir -p /sysroot
+
+	msg "ostree: preparing root at $ROOTFS_DIR"
+	# v2026.6 renamed the binary; accept both
+	PR=/usr/lib/ostree/ostree-prepare-root
+	[ -x $PR ] || PR=/usr/lib/ostree/prepare-root
+	[ -x $PR ] || fatal "no ostree prepare-root binary in initramfs"
+	$PR $ROOTFS_DIR || fatal "ostree prepare-root failed"
+	msg "ostree: root prepared"
+
+	# prepare-root stamps /run/ostree-booted (how bootc/libostree recognize
+	# an ostree boot); busybox switch_root doesn't move mounts, so carry the
+	# /run tmpfs onto the deployment ourselves or the marker is lost
+	mkdir -p $ROOTFS_DIR/run
+	mount --move /run $ROOTFS_DIR/run || fatal "failed to move /run onto root"
+}
