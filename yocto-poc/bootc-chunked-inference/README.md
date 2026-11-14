@@ -58,6 +58,43 @@ python3 meta-chunked-bootc/scripts/compare-oci-layers.py OLD.oci NEW.oci \
 The report includes changed layer count, bytes, and paths. A release build can
 set `BOOTC_LAYER_COMPARE_FROM` to make this check a BitBake task.
 
+### Real edge model (local Phase 1)
+
+The local real-model path uses the Apache-2.0 `eoinedge/AnomalyNet` model. It
+is an 842-parameter temperature-window classifier with 32 inputs and two
+outputs (`normal`, `anomaly`). Its published training data is the
+`eoinedge/heater-anomaly-windows` dataset: 20,000 training rows, 4,000
+validation rows, and 4,000 test rows. The dataset contains synthetic heater
+telemetry with spikes, dropouts, runaway ramps, and noise bursts.
+
+Install host-side training dependencies and create an immutable model release
+outside BitBake:
+
+```bash
+python3 -m venv .venv-model
+. .venv-model/bin/activate
+pip install torch datasets
+python3 models/training/finetune-anomalynet.py \
+  --version anomalynet-v1 \
+  --output models/anomalynet-v1
+```
+
+The script downloads the original state dict, loads the published dataset,
+fine-tunes the model, and writes the actual trained weights as a compact JSON
+artifact. It also writes the manifest and checksum used by the BitBake model
+recipe. The target service executes the same two-layer MLP with its embedded
+weights and does not require PyTorch on the image.
+
+Build the real-model image with the dedicated manifest:
+
+```bash
+kas build kas/bootc-chunked-inference-qemuarm64-anomalynet.yaml
+```
+
+This first phase uses the published synthetic dataset to reproduce the edge
+workflow. A later release should replace it with device-specific telemetry
+while retaining the same 32-sample input contract and manifest provenance.
+
 ## Deployment validation
 
 The generated `*-hybrid.oci` is the bootc-installable artifact. The validated

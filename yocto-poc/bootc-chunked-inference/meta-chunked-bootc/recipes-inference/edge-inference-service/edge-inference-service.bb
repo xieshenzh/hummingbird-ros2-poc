@@ -4,7 +4,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "file://edge-inference.py file://edge-inference.service"
 S = "${WORKDIR}"
-RDEPENDS:${PN} = "python3-core python3-json python3-email python3-html python3-mime python3-netclient python3-netserver"
+RDEPENDS:${PN} = "python3-core python3-io python3-json python3-email python3-html python3-mime python3-netclient python3-netserver"
 inherit systemd useradd
 SYSTEMD_SERVICE:${PN} = "edge-inference.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"

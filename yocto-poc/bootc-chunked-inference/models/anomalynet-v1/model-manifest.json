@@ -1,0 +1,14 @@
+{
+  "version": "anomalynet-v1",
+  "format": "json-anomalynet",
+  "model": "eoinedge/AnomalyNet",
+  "sha256": "009ed4eab40ef3943716d132dc4892842be16df28382835f93146f3a7a2ea778",
+  "window": 32,
+  "classes": [
+    "normal",
+    "anomaly"
+  ],
+  "metrics": {
+    "test_accuracy": 0.9965000152587891
+  }
+}
