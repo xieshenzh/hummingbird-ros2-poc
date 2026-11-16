@@ -137,6 +137,7 @@ spec:
                 command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
               done
               test "$(params.release)" = anomalynet-v3
+              install -m 0755 "$(command -v skopeo)" /tmp/chunked-bootc-skopeo-static
               kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
               bitbake_bin="$(find . -path '*/bitbake/bin/bitbake' -type f -print -quit)"
               test -n "$bitbake_bin"
