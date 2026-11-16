@@ -9,7 +9,7 @@ python3 -m py_compile models/training/train-model.py \
 python3 - <<'PY'
 import hashlib, json
 from pathlib import Path
-for version in ('v1', 'v2', 'anomalynet-v1'):
+for version in ('v1', 'v2', 'anomalynet-v1', 'anomalynet-v2'):
     root = Path('models') / version
     manifest = json.loads((root / 'model-manifest.json').read_text())
     assert manifest['version'] == version

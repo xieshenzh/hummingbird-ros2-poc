@@ -1,0 +1,18 @@
+{
+  "version": "anomalynet-v2",
+  "format": "json-anomalynet",
+  "model": "eoinedge/AnomalyNet",
+  "sha256": "eb2d255f75a4eb68edbf2afb790a257863ad0a3310d0aedf106f93821fbdc9f7",
+  "window": 32,
+  "classes": [
+    "normal",
+    "anomaly"
+  ],
+  "metrics": {
+    "test_accuracy": 0.996749997138977,
+    "epochs": 5,
+    "learning_rate": 0.0002,
+    "batch_size": 128,
+    "seed": 20261116
+  }
+}

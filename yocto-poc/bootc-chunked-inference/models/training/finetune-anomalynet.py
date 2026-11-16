@@ -92,8 +92,10 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--seed", type=int, default=20261116)
     args = parser.parse_args()
 
+    torch.manual_seed(args.seed)
     dataset = load_dataset(args.dataset)
     train_x, train_y = tensors(dataset["train"])
     test_x, test_y = tensors(dataset["test"])
@@ -110,7 +112,13 @@ def main():
             optimizer.step()
         print("epoch %d/%d: test_accuracy=%.4f" %
               (epoch + 1, args.epochs, evaluate(model, test_x, test_y)))
-    metrics = {"test_accuracy": evaluate(model, test_x, test_y)}
+    metrics = {
+        "test_accuracy": evaluate(model, test_x, test_y),
+        "epochs": args.epochs,
+        "learning_rate": args.lr,
+        "batch_size": args.batch_size,
+        "seed": args.seed,
+    }
     export(model, args.version, args.output, metrics)
     recipe_release = args.recipe_files / args.version
     recipe_release.mkdir(parents=True, exist_ok=True)

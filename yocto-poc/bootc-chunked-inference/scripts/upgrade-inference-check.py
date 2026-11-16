@@ -39,6 +39,38 @@ QEMU = (
 
 failures = []
 
+NORMAL_SAMPLES = [50] * 32
+ANOMALY_SAMPLES = [50] * 16 + [110] * 16
+
+
+def check_inference(child, expected_version, phase):
+    """Assert the real AnomalyNet API and both classification paths."""
+    version = run(child, "wget -qO- http://127.0.0.1:8080/version")
+    try:
+        metadata = json.loads(version[version.index("{"):])
+    except (ValueError, json.JSONDecodeError) as error:
+        failures.append("%s: invalid /version response: %s" % (phase, error))
+        return
+    if metadata.get("version") != expected_version:
+        failures.append("%s: service version is %r, expected %r" %
+                        (phase, metadata.get("version"), expected_version))
+
+    for name, samples, expected in (("normal", NORMAL_SAMPLES, "normal"),
+                                    ("anomaly", ANOMALY_SAMPLES, "anomaly")):
+        payload = json.dumps({"samples": samples}, separators=(",", ":"))
+        response = run(child, "wget -qO- --header='Content-Type: application/json' "
+                       "--post-data='%s' http://127.0.0.1:8080/infer" % payload)
+        try:
+            result = json.loads(response[response.index("{"):])
+        except (ValueError, json.JSONDecodeError) as error:
+            failures.append("%s %s inference: invalid response: %s" %
+                            (phase, name, error))
+            continue
+        print("%s %s inference: %s" % (phase, name, result))
+        if result.get("classification") != expected:
+            failures.append("%s %s inference classified %r, expected %r" %
+                            (phase, name, result.get("classification"), expected))
+
 
 def sh(cmd):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout
@@ -154,6 +186,7 @@ booted_img = before["status"]["booted"]["image"]["image"]["image"]
 print("\nbooted before switch: %s" % booted_img)
 if FROM_TAG not in booted_img:
     failures.append("boot 1: expected %s booted, got %s" % (FROM_TAG, booted_img))
+check_inference(child, "anomalynet-" + FROM_TAG, "before switch")
 
 # Ensure the guest-reachable registry is configured at runtime (deployment
 # /etc is writable); bootc's pull also needs the containers storage directory.
@@ -199,9 +232,14 @@ if not rollback or FROM_TAG not in rollback["image"]["image"]["image"]:
 
 out = run(child, "cat /etc/chunked-bootc-version")
 print("/etc/chunked-bootc-version: %s" % out.strip())
-# The recipe writes the configured CHUNKED_BOOTC_VERSION verbatim.
-if out.strip() != NEW_TAG:
-    failures.append("/etc/chunked-bootc-version is %r, expected %r" % (out.strip(), NEW_TAG))
+# The recipe writes the configured CHUNKED_BOOTC_VERSION verbatim, which is
+# the immutable model release name rather than the short registry tag.
+expected_model_version = "anomalynet-" + NEW_TAG
+if out.strip() != expected_model_version:
+    failures.append("/etc/chunked-bootc-version is %r, expected %r" %
+                    (out.strip(), expected_model_version))
+
+check_inference(child, "anomalynet-" + NEW_TAG, "after upgrade")
 
 # measured delta: ostree content diff between rollback and booted commits
 new_c = booted["ostree"]["checksum"]

@@ -95,19 +95,45 @@ This first phase uses the published synthetic dataset to reproduce the edge
 workflow. A later release should replace it with device-specific telemetry
 while retaining the same 32-sample input contract and manifest provenance.
 
+### Phase 2: v2 fine-tuning and bootc upgrade
+
+The Phase 2 release is fine-tuned with a fixed seed and records its training
+configuration in the model manifest:
+
+```bash
+python3 models/training/finetune-anomalynet.py \
+  --version anomalynet-v2 \
+  --output models/anomalynet-v2 \
+  --epochs 5 \
+  --lr 0.0002 \
+  --batch-size 128 \
+  --seed 20261116
+```
+
+Build the v2 bootc image with:
+
+```bash
+kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v2.yaml
+```
+
+The next validation step compares the v1 and v2 hybrid OCI artifacts, then
+uses `bootc switch` and reboot to verify v2 boot selection, v1 rollback
+retention, and inference behavior after the upgrade.
+
 ## Deployment validation
 
 The generated `*-hybrid.oci` is the bootc-installable artifact. The validated
-local-registry/QEMU run installed v1, checked the golden request (`2 -> 2.0`),
-switched to v2, rebooted, and checked (`2 -> 2.5`). After reboot, bootc
+local-registry/QEMU run installed v1, classified a steady 32-sample window as
+`normal`, switched to v2, rebooted, and classified both the steady window as
+`normal` and a high-temperature excursion as `anomaly`. After reboot, bootc
 reported v2 as booted and retained v1 as the rollback deployment; the
 PREEMPT_RT kernel remained active. bootc 1.1.0 emits a nonfatal pruning
 warning while staging in this PoC, but the stage and deployment transaction
 completed successfully. Registry credentials and site policy are deployment
 inputs and are never embedded in the image.
 
-The final hybrid OCI comparison contained 26 layers in each image, with one
-changed layer and 66,269,184 changed bytes. This is the measured chunk-level
+The final hybrid OCI comparison contained 27 layers in each image, with one
+changed layer and 66,287,104 changed bytes. This is the measured chunk-level
 delta for the deterministic model release update.
 
 The copied, optional developer harnesses are:
