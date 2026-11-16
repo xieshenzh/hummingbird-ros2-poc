@@ -136,6 +136,13 @@ The final hybrid OCI comparison contained 27 layers in each image, with one
 changed layer and 66,287,104 changed bytes. This is the measured chunk-level
 delta for the deterministic model release update.
 
+The follow-up safety checks also passed. Killing `bootc switch` with `SIGKILL`
+after it entered the registry pull/stage path left v2 booted and rebootable,
+with PREEMPT_RT intact. A real `bootc rollback` from v2 then rebooted into v1;
+v2 was retained as the rollback deployment, `/version` and
+`/etc/chunked-bootc-version` reported `anomalynet-v1`, and both normal and
+anomaly inference classifications passed.
+
 The copied, optional developer harnesses are:
 
 ```bash

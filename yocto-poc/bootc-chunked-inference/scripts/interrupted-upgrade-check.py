@@ -125,13 +125,13 @@ print("\nbooted before interrupt test: %s" % booted)
 if CURRENT_TAG not in booted:
     failures.append("expected %s booted, got %s" % (CURRENT_TAG, booted))
 
-# point at the guest-reachable registry.
-# printf with single-quoted args: no quoting layer can strip the inner
-# double quotes (a broken TOML here surfaces later as a confusing
-# "invalid reference format" from the pull path)
-out = run(child, "printf '%s\\n' '[registries.insecure]' "
-                 "'registries = [\"10.0.2.2:5000\"]' > /etc/containers/registries.conf; "
-                 "mkdir -p /var/lib/containers; cat /etc/containers/registries.conf")
+# Point at the guest-reachable registry. bootc uses the containers v2 TOML
+# format; the older [registries.insecure] format causes bootc to fail before
+# pulling, which would make the interruption test a false positive.
+out = run(child, "printf '%s\\n' '[[registry]]' "
+                  "'location = \"10.0.2.2:5000\"' 'insecure = true' > /etc/containers/registries.conf; "
+                  "mkdir -p /var/tmp /var/lib/containers/storage /var/lib/containers/cache /run/containers; "
+                  "cat /etc/containers/registries.conf")
 print("\nregistries.conf:\n%s" % out.strip())
 
 # Run the switch in the foreground and arm a background watcher that SIGKILLs
