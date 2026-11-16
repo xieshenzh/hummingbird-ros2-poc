@@ -4,12 +4,13 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 python3 -m py_compile models/training/train-model.py \
   models/training/finetune-anomalynet.py \
+  openshift/kserve-anomalynet.py \
   meta-chunked-bootc/scripts/compare-oci-layers.py \
   meta-chunked-bootc/recipes-inference/edge-inference-service/files/edge-inference.py
 python3 - <<'PY'
 import hashlib, json
 from pathlib import Path
-for version in ('v1', 'v2', 'anomalynet-v1', 'anomalynet-v2'):
+for version in ('v1', 'v2', 'anomalynet-v1', 'anomalynet-v2', 'anomalynet-v3'):
     root = Path('models') / version
     manifest = json.loads((root / 'model-manifest.json').read_text())
     assert manifest['version'] == version
@@ -17,5 +18,6 @@ for version in ('v1', 'v2', 'anomalynet-v1', 'anomalynet-v2'):
 print('model release validation: PASS')
 PY
 grep -q 'generic-inference-bootc-image' kas/bootc-chunked-inference-qemuarm64.yaml
+grep -q 'BOOTC_MODEL_RELEASE = "anomalynet-v3"' kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
 grep -q 'chunked-bootc-chunkah' meta-chunked-bootc/recipes-core/images/generic-inference-bootc-image.bb
 echo 'static validation: PASS'

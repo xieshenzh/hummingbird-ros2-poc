@@ -1,0 +1,54 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: anomalynet-v3
+  labels:
+    app.kubernetes.io/name: anomalynet
+    app.kubernetes.io/instance: anomalynet-v3
+    app.kubernetes.io/version: anomalynet-v3
+  annotations:
+    serving.kserve.io/deploymentMode: Standard
+    security.opendatahub.io/enable-auth: "false"
+spec:
+  predictor:
+    automountServiceAccountToken: false
+    minReplicas: 1
+    maxReplicas: 1
+    containers:
+      - name: kserve-container
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "/opt/kserve/kserve-anomalynet.py"]
+        env:
+          - name: ANOMALYNET_MODEL_DIR
+            value: /mnt/models
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 250m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: model
+            mountPath: /mnt/models
+            readOnly: true
+          - name: service
+            mountPath: /opt/kserve
+            readOnly: true
+    volumes:
+      - name: model
+        configMap:
+          name: anomalynet-v3-model
+          defaultMode: 0444
+      - name: service
+        configMap:
+          name: anomalynet-v3-service
+          defaultMode: 0555

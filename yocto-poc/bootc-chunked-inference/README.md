@@ -157,23 +157,158 @@ upgrade, and interrupted-upgrade checks should be wired through
 
 ## OpenShift deployment
 
-An optional Phase 3 application deployment is provided in
-`openshift/anomalynet-v2/`. The top-level Kustomization keeps the model and
-service source tied to the immutable v2 release while deploying the
-dependency-free HTTP service in a non-root UBI Python container:
+The former `openshift/anomalynet-v2/` Deployment/Service/Route was an
+intermediate smoke test only. The Phase 3 Kustomization now deploys the
+OpenShift AI KServe `InferenceService/anomalynet-v3` and the immutable v3
+release:
 
 ```bash
 oc apply -k yocto-poc/bootc-chunked-inference
-oc -n my-first-model rollout status deployment/anomalynet-v2
-oc -n my-first-model get route anomalynet-v2
+oc -n my-first-model get inferenceservice anomalynet-v3
 ```
 
-The deployment exposes `/healthz`, `/ready`, `/version`, `/metrics`, and
-`/infer` through an edge-terminated OpenShift Route. The model ConfigMap is
-generated from `models/anomalynet-v2/` and should not be replaced with a
+KServe reports the predictor as Ready and Loaded. The custom dependency-free
+adapter exposes KServe-compatible health paths and
+`POST /v2/models/anomalynet-v3/infer`; the model ConfigMap is generated from
+the committed `models/anomalynet-v3/` release and is not replaced with a
 mutable training output.
 
 This is a generic Yocto reference image, not a claim of a supported RHEL for
 Edge or MicroShift host configuration. A production Red Hat deployment should
 use the supported RHEL/Image Mode + MicroShift path while reusing the model
 release and OCI validation concepts demonstrated here.
+
+## Phase 3: OpenShift AI model workflow
+
+Phase 3 keeps training outside BitBake and runs the reproducible fine-tuning
+job with the OpenShift AI/Kubeflow Training Operator. The pinned inputs and
+configuration are in `models/training/training-config-v3.json`; the submitted
+single-worker CPU `PyTorchJob` is in `openshift/phase3-pytorchjob.yaml`.
+
+The completed release is `models/anomalynet-v3/`. It contains the compact JSON
+weights, an immutable manifest, and a checksum. The release was trained with:
+
+- source model `eoinedge/AnomalyNet@bb9db962cebb0f506496dc51e824cfc15b8a7ab`
+- dataset `eoinedge/heater-anomaly-windows@1d8bc1832883fec91792fedbdba11e79ee476636`
+- seed `20261116`, 5 epochs, learning rate `0.0002`, batch size `128`
+- evaluation threshold `0.99`; measured test accuracy `0.996749997138977`
+- model SHA-256 `4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb`
+
+The release is mirrored under
+`meta-chunked-bootc/recipes-inference/edge-inference-model/files/anomalynet-v3/`
+so it can be selected by `BOOTC_MODEL_RELEASE=anomalynet-v3` without training
+inside BitBake.
+
+Phase 4 has a fixed KAS configuration for this approved release:
+
+```bash
+kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+```
+
+The final OpenShift AI inference path is the KServe-managed
+`InferenceService/anomalynet-v3` in `openshift/anomalynet-v3-inferenceservice.yaml`.
+It uses the dependency-free JSON adapter in `openshift/kserve-anomalynet.py`,
+with the immutable release mounted by ConfigMap. The previous generic v2
+Deployment, Service, Route, and ConfigMaps are not part of the Phase 3
+Kustomization and were removed from the namespace.
+
+Validate the KServe workload from inside its managed predictor pod:
+
+```bash
+oc -n my-first-model get inferenceservice anomalynet-v3
+oc -n my-first-model exec deploy/anomalynet-v3-predictor -- curl -sS http://localhost:8080/healthz
+oc -n my-first-model exec deploy/anomalynet-v3-predictor -- curl -sS http://localhost:8080/version
+```
+
+The platform-level Model Registry component CR is not itself a registry
+instance. The actual namespaced registry is defined separately in
+`openshift/anomalynet-registry.yaml` and must be applied to
+`rhoai-model-registries`:
+
+```bash
+oc apply -f openshift/anomalynet-registry.yaml
+```
+
+This creates the REST service and OAuth-protected route. The registration
+metadata used for `anomalynet-v3` is recorded in
+`openshift/model-registry-registration.json`; the live registry contains the
+registered model, version, artifact, provenance fields, and SHA-256. Use the
+current route as `MODEL_REGISTRY_URL` and pass the token only at runtime:
+
+```bash
+export MODEL_REGISTRY_URL=https://anomalynet-registry-rest.apps.ocp.8q22b.sandbox1882.opentlc.com
+export MODEL_REGISTRY_TOKEN="$(oc whoami -t)"
+curl -ksS -H "Authorization: Bearer $MODEL_REGISTRY_TOKEN" \
+  "$MODEL_REGISTRY_URL/api/model_registry/v1alpha3/registered_models"
+```
+
+## Phase 4: production model-to-device promotion
+
+The approved `anomalynet-v3` release is selected by the fixed
+`kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml` configuration. Run
+the build from a prepared Yocto/KAS environment:
+
+```bash
+cd yocto-poc/bootc-chunked-inference
+kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+```
+
+After the build, validate the generated bootc/OCI artifacts and run the
+existing deployment checks for boot, inference, `bootc switch`, rollback, and
+interrupted upgrade safety. The current macOS session has no `kas` or BitBake
+installation, so the image build itself must run in the project Yocto build
+environment or a prepared KAS container.
+
+### OpenShift AI / OpenShift Pipelines execution
+
+The Phase 4 build is intended to run in OpenShift, not on the developer
+workstation. OpenShift AI owns the approved release PVC and Tekton/OpenShift
+Pipelines executes the promotion. The pipeline copies the release from
+`anomalynet-v3-release`, verifies the model and manifest SHA-256, overlays it
+onto the checked-out source, runs KAS/BitBake, validates the generated
+`generic-inference-bootc-image-hybrid.oci`, and optionally publishes it.
+
+The manifests are intentionally opt-in because publication credentials must
+never be committed:
+
+```bash
+oc apply -f openshift/phase4-build-pvc.yaml -n my-first-model
+oc apply -f openshift/phase4-tekton-pipeline.yaml -n my-first-model
+# Review the builder image and destination, then submit the run:
+oc apply -f openshift/phase4-tekton-pipelinerun.yaml -n my-first-model
+oc -n my-first-model get pipelinerun anomalynet-v3-yocto-bootc-promotion
+oc -n my-first-model logs -f pipelinerun/anomalynet-v3-yocto-bootc-promotion
+```
+
+The `yocto-builder-image` parameter is a contract, not a claim that the
+generic KAS image contains every host tool. Before submitting the run, use a
+cluster-approved image derived from the KAS image and pin it by digest. It
+must contain `kas`, BitBake, `buildah`, `chunkah`, `ostree`, `ostree-encap`,
+and `skopeo`; the pipeline fails closed if any tool is absent. Set
+`publish-image`, `publish-username`, and `publish-password` only at runtime
+(prefer a Secret-backed Tekton parameter or an internal registry service
+account); no OpenShift token or registry password belongs in Git.
+The Git revision used by the run must also contain the Phase 4 KAS file and
+pipeline changes; push the reviewed commit before launching the run.
+
+### Building the builder image in OpenShift
+
+The builder image can be bootstrapped without local Docker or Podman using the
+OpenShift binary build API:
+
+```bash
+oc apply -f openshift/phase4-builder-buildconfig.yaml -n my-first-model
+oc start-build yocto-bootc-builder \
+  --from-dir=openshift \
+  --follow \
+  -n my-first-model
+oc -n my-first-model get istag yocto-bootc-builder:5.2
+```
+
+The binary build context contains `yocto-builder.Containerfile`. It uses
+`ghcr.io/siemens/kas/kas:5.2-debian-bookworm` as its base and copies Chunkah
+from the pinned `coreos/chunkah` `v0.7.1` source commit, compiled inside the
+Debian Bookworm base to avoid a glibc mismatch. The image exposes an
+`ostree-encap` compatibility wrapper backed by the upstream
+`ostree container encapsulate` command. The Containerfile performs a tool
+smoke test before the image is accepted.

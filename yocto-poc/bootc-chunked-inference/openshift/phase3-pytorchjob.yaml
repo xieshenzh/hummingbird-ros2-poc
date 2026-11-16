@@ -1,0 +1,84 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: anomalynet-v3-training
+  labels:
+    app.kubernetes.io/name: anomalynet-training
+    app.kubernetes.io/instance: anomalynet-v3
+    app.kubernetes.io/version: anomalynet-v3
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: anomalynet-training
+            app.kubernetes.io/instance: anomalynet-v3
+        spec:
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pytorch
+              image: python:3.11-slim
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  mkdir -p /tmp/python
+                  export HOME=/tmp
+                  export HF_HOME=/tmp/huggingface
+                  export HF_DATASETS_CACHE=/tmp/huggingface/datasets
+                  export HF_HUB_CACHE=/tmp/huggingface/hub
+                  pip install --no-cache-dir --target /tmp/python torch==2.5.1 datasets==3.0.1
+                  export PYTHONPATH=/tmp/python
+                  python /workspace/training/finetune-anomalynet.py \
+                    --version anomalynet-v3 \
+                    --output /workspace/release \
+                    --recipe-files /workspace/recipe \
+                    --base-state /workspace/cache/anomaly_net.pt \
+                    --dataset eoinedge/heater-anomaly-windows \
+                    --dataset-revision 1d8bc1832883fec91792fedbdba11e79ee476636 \
+                    --source-model-revision bb9db962cebb0f506496dc51e824cfc15b8a7ab \
+                    --epochs 5 \
+                    --lr 0.0002 \
+                    --batch-size 128 \
+                    --seed 20261116 \
+                    --evaluation-threshold 0.99
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 4Gi
+                limits:
+                  cpu: "4"
+                  memory: 8Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: training-source
+                  mountPath: /workspace/training
+                  readOnly: true
+                - name: training-output
+                  mountPath: /workspace/release
+                - name: training-cache
+                  mountPath: /workspace/cache
+                - name: recipe-output
+                  mountPath: /workspace/recipe
+          volumes:
+            - name: training-source
+              configMap:
+                name: anomalynet-v3-training-source
+                defaultMode: 0555
+            - name: training-output
+              persistentVolumeClaim:
+                claimName: anomalynet-v3-release
+            - name: training-cache
+              emptyDir: {}
+            - name: recipe-output
+              emptyDir: {}

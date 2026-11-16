@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anomalynet-v3-release
+  labels:
+    app.kubernetes.io/name: anomalynet-training
+    app.kubernetes.io/instance: anomalynet-v3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: gp3-csi

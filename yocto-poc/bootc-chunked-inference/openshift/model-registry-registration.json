@@ -1,0 +1,26 @@
+{
+  "registered_model": {
+    "name": "AnomalyNet",
+    "description": "Immutable AnomalyNet edge model releases trained through OpenShift AI",
+    "externalId": "anomalynet"
+  },
+  "model_version": {
+    "name": "anomalynet-v3",
+    "description": "OpenShift AI trained immutable edge release",
+    "author": "OpenShift AI PyTorchJob anomalynet-v3-training",
+    "externalId": "anomalynet-v3-4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb",
+    "source_model": "eoinedge/AnomalyNet@bb9db962cebb0f506496dc51e824cfc15b8a7ab",
+    "dataset": "eoinedge/heater-anomaly-windows@1d8bc1832883fec91792fedbdba11e79ee476636",
+    "training": {
+      "seed": 20261116,
+      "epochs": 5,
+      "learning_rate": 0.0002,
+      "batch_size": 128
+    },
+    "evaluation_threshold": 0.99,
+    "test_accuracy": 0.996749997138977,
+    "sha256": "4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb",
+    "artifact_uri": "pvc://my-first-model/anomalynet-v3-release",
+    "inference_service": "my-first-model/anomalynet-v3"
+  }
+}

@@ -1,0 +1,231 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: anomalynet-v3-yocto-bootc-promotion
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-yocto-bootc-promotion
+    app.kubernetes.io/part-of: anomalynet-promotion
+spec:
+  description: >-
+    Promote the approved OpenShift AI AnomalyNet release into a Yocto/bootc
+    image. Training is deliberately not performed by this pipeline.
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/xieshenzh/hummingbird-ros2-poc.git
+    - name: git-revision
+      type: string
+      default: add-ros2-base-images
+    - name: model-release
+      type: string
+      default: anomalynet-v3
+    - name: model-sha256
+      type: string
+      default: 4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb
+    - name: yocto-builder-image
+      type: string
+      description: >-
+        Pinned image containing kas/BitBake and the host tools required by the
+        repository classes: buildah, chunkah, ostree, ostree-encap and skopeo.
+      default: image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:4958792b3bcf1199e43935fc185d78d0b32788b64bea7a29927802b011d1b82e
+    - name: publish-image
+      type: string
+      description: Optional docker:// destination; empty means build-only.
+      default: ""
+    - name: publish-username
+      type: string
+      default: ""
+    - name: publish-password
+      type: string
+      default: ""
+  workspaces:
+    - name: source
+    - name: model
+    - name: output
+  tasks:
+    - name: clone-source
+      taskSpec:
+        params:
+          - name: url
+            type: string
+          - name: revision
+            type: string
+        workspaces:
+          - name: source
+        steps:
+          - name: clone
+            image: alpine/git:2.45.2
+            script: |
+              #!/bin/sh
+              set -eu
+              rm -rf "$(workspaces.source.path)"/* "$(workspaces.source.path)"/.[!.]*
+              git clone --depth 1 --branch "$(params.revision)" "$(params.url)" "$(workspaces.source.path)/repo"
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: stage-approved-model
+      runAfter: [clone-source]
+      taskSpec:
+        params:
+          - name: release
+            type: string
+          - name: expected-sha256
+            type: string
+        workspaces:
+          - name: source
+          - name: model
+        steps:
+          - name: copy-and-verify
+            image: registry.access.redhat.com/ubi9:9.5
+            script: |
+              #!/usr/bin/bash
+              set -euo pipefail
+              root="$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference"
+              input="$(workspaces.model.path)"
+              release="$(params.release)"
+              expected="$(params.expected-sha256)"
+              test -f "$input/model.json"
+              test -f "$input/model-manifest.json"
+              actual="$(sha256sum "$input/model.json" | awk '{print $1}')"
+              test "$actual" = "$expected"
+              manifest_sha="$(grep -o '"sha256"[[:space:]]*:[[:space:]]*"[^"]*"' "$input/model-manifest.json" | head -1 | sed 's/.*"sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')"
+              test "$manifest_sha" = "$expected"
+              mkdir -p "$root/models/$release" \
+                "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release"
+              cp "$input/model.json" "$input/model-manifest.json" "$root/models/$release/"
+              cp "$input/model.json" "$input/model-manifest.json" \
+                "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release/"
+              printf '%s  %s\n' "$actual" model.json > "$root/models/$release/checksums.txt"
+              printf '%s  %s\n' "$actual" model.json > "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release/checksums.txt"
+              echo "approved model $release verified: $actual"
+      params:
+        - name: release
+          value: $(params.model-release)
+        - name: expected-sha256
+          value: $(params.model-sha256)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: model
+          workspace: model
+
+    - name: yocto-build
+      runAfter: [stage-approved-model]
+      taskSpec:
+        params:
+          - name: builder-image
+            type: string
+          - name: release
+            type: string
+        workspaces:
+          - name: source
+          - name: output
+        steps:
+          - name: build
+            image: $(params.builder-image)
+            workingDir: $(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              for tool in kas buildah chunkah ostree ostree-encap skopeo; do
+                command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
+              done
+              test "$(params.release)" = anomalynet-v3
+              kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+              bitbake_bin="$(find . -path '*/bitbake/bin/bitbake' -type f -print -quit)"
+              test -n "$bitbake_bin"
+              "$bitbake_bin" --version
+              kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+              deploy="build/tmp/deploy/images/qemuarm64"
+              test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
+              cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
+              sha256sum models/$(params.release)/model.json > "$(workspaces.output.path)/model.sha256"
+              printf '%s\n' "$(params.release)" > "$(workspaces.output.path)/model-release"
+      params:
+        - name: builder-image
+          value: $(params.yocto-builder-image)
+        - name: release
+          value: $(params.model-release)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: output
+          workspace: output
+
+    - name: validate-artifact
+      runAfter: [yocto-build]
+      taskSpec:
+        params:
+          - name: release
+            type: string
+          - name: expected-sha256
+            type: string
+        workspaces:
+          - name: source
+          - name: output
+        steps:
+          - name: validate
+            image: registry.access.redhat.com/ubi9:9.5
+            script: |
+              #!/usr/bin/bash
+              set -euo pipefail
+              test "$(cat $(workspaces.output.path)/model-release)" = "$(params.release)"
+              test "$(awk '{print $1}' $(workspaces.output.path)/model.sha256)" = "$(params.expected-sha256)"
+              test -d "$(workspaces.output.path)/generic-inference-bootc-image-hybrid.oci"
+              grep -R -q "$(params.release)" "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/models/$(params.release)/model-manifest.json"
+              echo "Phase 4 artifact validation: PASS"
+      params:
+        - name: release
+          value: $(params.model-release)
+        - name: expected-sha256
+          value: $(params.model-sha256)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: output
+          workspace: output
+
+    - name: publish-oci
+      runAfter: [validate-artifact]
+      when:
+        - input: $(params.publish-image)
+          operator: notin
+          values: [""]
+      taskSpec:
+        params:
+          - name: destination
+            type: string
+          - name: username
+            type: string
+          - name: password
+            type: string
+        workspaces:
+          - name: output
+        steps:
+          - name: copy
+            image: quay.io/skopeo/stable:v1.15
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              test -n "$(params.username)" && test -n "$(params.password)"
+              skopeo copy --dest-tls-verify=false \
+                --dest-creds "$(params.username):$(params.password)" \
+                "oci:$(workspaces.output.path)/generic-inference-bootc-image-hybrid.oci" \
+                "docker://$(params.destination)"
+              echo "published $(params.destination)"
+      params:
+        - name: destination
+          value: $(params.publish-image)
+        - name: username
+          value: $(params.publish-username)
+        - name: password
+          value: $(params.publish-password)
+      workspaces:
+        - name: output
+          workspace: output

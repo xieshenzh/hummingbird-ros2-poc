@@ -1,0 +1,14 @@
+apiVersion: modelregistry.opendatahub.io/v1beta1
+kind: ModelRegistry
+metadata:
+  name: anomalynet-registry
+  namespace: rhoai-model-registries
+spec:
+  postgres:
+    database: modelregistry
+    generateDeployment: true
+    username: postgres
+  rest:
+    serviceRoute: enabled
+  oauthProxy:
+    serviceRoute: enabled

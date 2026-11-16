@@ -24,7 +24,7 @@ WINDOW = 32
 MEAN = 50.0
 SCALE = 20.0
 CLASSES = ["normal", "anomaly"]
-MODEL_URL = "https://huggingface.co/eoinedge/AnomalyNet/resolve/main/anomaly_net.pt"
+MODEL_URL = "https://huggingface.co/eoinedge/AnomalyNet/resolve/{}/anomaly_net.pt"
 
 
 class AnomalyNet(nn.Module):
@@ -37,10 +37,10 @@ class AnomalyNet(nn.Module):
         return self.fc2(torch.relu(self.fc1(x)))
 
 
-def load_base(path):
+def load_base(path, source_model_revision):
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(urlopen(MODEL_URL, timeout=60).read())
+        path.write_bytes(urlopen(MODEL_URL.format(source_model_revision), timeout=60).read())
     model = AnomalyNet()
     model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
     return model
@@ -59,7 +59,8 @@ def evaluate(model, x, y):
         return float((model(x).argmax(1) == y).float().mean())
 
 
-def export(model, version, output, metrics):
+def export(model, version, output, metrics, dataset, dataset_revision,
+           source_model_revision, evaluation_threshold):
     state = model.state_dict()
     artifact = {
         "model": "AnomalyNet", "format": "anomalynet-mlp", "window": WINDOW,
@@ -74,8 +75,15 @@ def export(model, version, output, metrics):
     model_path.write_text(json.dumps(artifact, sort_keys=True, separators=(",", ":")) + "\n")
     digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
     manifest = {"version": version, "format": "json-anomalynet",
-                "model": "eoinedge/AnomalyNet", "sha256": digest,
-                "window": WINDOW, "classes": CLASSES, "metrics": metrics}
+                "model": "eoinedge/AnomalyNet", "source_model_revision": source_model_revision,
+                "dataset": dataset, "dataset_revision": dataset_revision,
+                "sha256": digest, "window": WINDOW, "classes": CLASSES,
+                "evaluation_threshold": evaluation_threshold,
+                "training": {"epochs": metrics["epochs"],
+                              "learning_rate": metrics["learning_rate"],
+                              "batch_size": metrics["batch_size"],
+                              "seed": metrics["seed"]},
+                "metrics": metrics}
     (output / "model-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (output / "checksums.txt").write_text("%s  model.json\n" % digest)
     print("wrote %s (%d bytes)" % (model_path, model_path.stat().st_size))
@@ -89,6 +97,9 @@ def main():
                         default=Path("meta-chunked-bootc/recipes-inference/edge-inference-model/files"))
     parser.add_argument("--base-state", type=Path, default=Path("artifacts/anomaly_net.pt"))
     parser.add_argument("--dataset", default="eoinedge/heater-anomaly-windows")
+    parser.add_argument("--dataset-revision", default="main")
+    parser.add_argument("--source-model-revision", default="main")
+    parser.add_argument("--evaluation-threshold", type=float, default=0.99)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=128)
@@ -96,10 +107,10 @@ def main():
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
-    dataset = load_dataset(args.dataset)
+    dataset = load_dataset(args.dataset, revision=args.dataset_revision)
     train_x, train_y = tensors(dataset["train"])
     test_x, test_y = tensors(dataset["test"])
-    model = load_base(args.base_state)
+    model = load_base(args.base_state, args.source_model_revision)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     for epoch in range(args.epochs):
         model.train()
@@ -119,7 +130,12 @@ def main():
         "batch_size": args.batch_size,
         "seed": args.seed,
     }
-    export(model, args.version, args.output, metrics)
+    if metrics["test_accuracy"] < args.evaluation_threshold:
+        raise RuntimeError("test accuracy %.6f is below evaluation threshold %.6f" %
+                           (metrics["test_accuracy"], args.evaluation_threshold))
+    export(model, args.version, args.output, metrics, args.dataset,
+           args.dataset_revision, args.source_model_revision,
+           args.evaluation_threshold)
     recipe_release = args.recipe_files / args.version
     recipe_release.mkdir(parents=True, exist_ok=True)
     for name in ("model.json", "model-manifest.json"):

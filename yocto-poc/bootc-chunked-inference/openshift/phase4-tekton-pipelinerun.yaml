@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: anomalynet-v3-yocto-bootc-promotion
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-yocto-bootc-promotion
+    app.kubernetes.io/part-of: anomalynet-promotion
+spec:
+  pipelineRef:
+    name: anomalynet-v3-yocto-bootc-promotion
+  taskRunTemplate:
+    serviceAccountName: pipeline
+    podTemplate:
+      securityContext:
+        fsGroup: 1001
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: phase4-yocto-workspace
+    - name: output
+      persistentVolumeClaim:
+        claimName: phase4-yocto-workspace
+    - name: model
+      persistentVolumeClaim:
+        claimName: anomalynet-v3-release

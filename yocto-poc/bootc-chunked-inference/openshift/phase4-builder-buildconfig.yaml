@@ -1,0 +1,28 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: yocto-bootc-builder
+  labels:
+    app.kubernetes.io/name: yocto-bootc-builder
+    app.kubernetes.io/part-of: anomalynet-promotion
+spec: {}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: yocto-bootc-builder
+  labels:
+    app.kubernetes.io/name: yocto-bootc-builder
+    app.kubernetes.io/part-of: anomalynet-promotion
+spec:
+  runPolicy: SerialLatestOnly
+  source:
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: yocto-builder.Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: yocto-bootc-builder:5.2

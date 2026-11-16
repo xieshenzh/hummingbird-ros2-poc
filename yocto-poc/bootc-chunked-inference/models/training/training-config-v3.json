@@ -1,0 +1,12 @@
+{
+  "version": "anomalynet-v3",
+  "source_model": "eoinedge/AnomalyNet",
+  "source_model_revision": "bb9db962cebb0f506496dc51e824cfc15b8a7ab",
+  "dataset": "eoinedge/heater-anomaly-windows",
+  "dataset_revision": "1d8bc1832883fec91792fedbdba11e79ee476636",
+  "seed": 20261116,
+  "epochs": 5,
+  "learning_rate": 0.0002,
+  "batch_size": 128,
+  "evaluation_threshold": 0.99
+}
