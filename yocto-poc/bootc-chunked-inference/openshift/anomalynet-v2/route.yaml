@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: anomalynet-v2
+  labels:
+    app.kubernetes.io/name: anomalynet
+    app.kubernetes.io/instance: anomalynet-v2
+spec:
+  to:
+    kind: Service
+    name: anomalynet-v2
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

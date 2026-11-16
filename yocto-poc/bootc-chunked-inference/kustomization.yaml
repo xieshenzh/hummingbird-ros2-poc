@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-first-model
+
+resources:
+  - openshift/anomalynet-v2/deployment.yaml
+  - openshift/anomalynet-v2/service.yaml
+  - openshift/anomalynet-v2/route.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: anomalynet-v2-service
+    files:
+      - edge-inference.py=meta-chunked-bootc/recipes-inference/edge-inference-service/files/edge-inference.py
+  - name: anomalynet-v2-model
+    files:
+      - model.json=models/anomalynet-v2/model.json
+      - model-manifest.json=models/anomalynet-v2/model-manifest.json

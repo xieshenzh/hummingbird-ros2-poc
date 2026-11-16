@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anomalynet-v2
+  labels:
+    app.kubernetes.io/name: anomalynet
+    app.kubernetes.io/instance: anomalynet-v2
+    app.kubernetes.io/version: anomalynet-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: anomalynet
+      app.kubernetes.io/instance: anomalynet-v2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: anomalynet
+        app.kubernetes.io/instance: anomalynet-v2
+        app.kubernetes.io/version: anomalynet-v2
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: edge-inference
+          image: registry.access.redhat.com/ubi9/python-311:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/app/edge-inference.py"]
+          env:
+            - name: EDGE_MODEL_PATH
+              value: /opt/edge-inference/model/model.json
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: service
+              mountPath: /opt/app
+              readOnly: true
+            - name: model
+              mountPath: /opt/edge-inference/model
+              readOnly: true
+      volumes:
+        - name: service
+          configMap:
+            name: anomalynet-v2-service
+            defaultMode: 0555
+        - name: model
+          configMap:
+            name: anomalynet-v2-model
+            defaultMode: 0444

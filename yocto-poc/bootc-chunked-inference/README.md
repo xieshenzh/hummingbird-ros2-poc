@@ -155,6 +155,24 @@ they are not part of normal artifact assembly. In CI, the equivalent boot,
 upgrade, and interrupted-upgrade checks should be wired through
 `oeqa/testimage`.
 
+## OpenShift deployment
+
+An optional Phase 3 application deployment is provided in
+`openshift/anomalynet-v2/`. The top-level Kustomization keeps the model and
+service source tied to the immutable v2 release while deploying the
+dependency-free HTTP service in a non-root UBI Python container:
+
+```bash
+oc apply -k yocto-poc/bootc-chunked-inference
+oc -n my-first-model rollout status deployment/anomalynet-v2
+oc -n my-first-model get route anomalynet-v2
+```
+
+The deployment exposes `/healthz`, `/ready`, `/version`, `/metrics`, and
+`/infer` through an edge-terminated OpenShift Route. The model ConfigMap is
+generated from `models/anomalynet-v2/` and should not be replaced with a
+mutable training output.
+
 This is a generic Yocto reference image, not a claim of a supported RHEL for
 Edge or MicroShift host configuration. A production Red Hat deployment should
 use the supported RHEL/Image Mode + MicroShift path while reusing the model
