@@ -32,13 +32,13 @@ ARG CHUNKAH_TAG=v0.7.1
 RUN git clone --depth 1 --branch "$CHUNKAH_TAG" https://github.com/coreos/chunkah.git /tmp/chunkah && \
     cd /tmp/chunkah && \
     cargo build --release --locked && \
-    install -m 0755 target/release/chunkah /usr/local/bin/chunkah && \
+    install -m 0755 target/release/chunkah /usr/bin/chunkah && \
     rm -rf /tmp/chunkah /root/.cargo/registry /root/.cargo/git
 
 # The project class historically called a small helper named ostree-encap.
 # Keep that stable interface, but use the upstream OSTree implementation in
 # the builder image. The class passes: REPO REF DESTINATION.
-RUN cat > /usr/local/bin/ostree-encap <<'EOF' && chmod 0755 /usr/local/bin/ostree-encap
+RUN cat > /usr/bin/ostree-encap <<'EOF' && chmod 0755 /usr/bin/ostree-encap
 #!/bin/sh
 set -eu
 if [ "$#" -eq 1 ] && [ "$1" = "--help" ]; then

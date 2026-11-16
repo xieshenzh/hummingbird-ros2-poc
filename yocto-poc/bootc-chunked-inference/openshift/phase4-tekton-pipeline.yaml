@@ -27,7 +27,7 @@ spec:
       description: >-
         Pinned image containing kas/BitBake and the host tools required by the
         repository classes: buildah, chunkah, ostree, ostree-encap and skopeo.
-      default: image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:4958792b3bcf1199e43935fc185d78d0b32788b64bea7a29927802b011d1b82e
+      default: image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:40a01ebfd1c55b2b660be75c389247e3dd8cc8de25d3ed6ae72679a89287e8d5
     - name: publish-image
       type: string
       description: Optional docker:// destination; empty means build-only.
