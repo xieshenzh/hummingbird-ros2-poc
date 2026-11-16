@@ -10,9 +10,6 @@ spec:
     name: anomalynet-v3-yocto-bootc-promotion
   taskRunTemplate:
     serviceAccountName: pipeline
-    podTemplate:
-      securityContext:
-        fsGroup: 1001
   workspaces:
     - name: source
       persistentVolumeClaim:
