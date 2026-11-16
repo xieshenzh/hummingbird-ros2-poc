@@ -57,4 +57,10 @@ RUN set -eux; \
     ostree-encap --help >/dev/null; \
     skopeo --version
 
+RUN mkdir -p /workspace && chmod 0777 /workspace
+
 WORKDIR /workspace
+
+# BitBake refuses to run as root. OpenShift may replace this UID with the
+# namespace-assigned non-root UID under its SCC, which is also supported.
+USER 1001
