@@ -48,7 +48,7 @@ do_chunked_bootc_chunk[fakeroot] = "1"
 do_chunked_bootc_chunk[dirs] = "${IMGDEPLOYDIR}"
 do_chunked_bootc_chunk[vardeps] += "CHUNKED_BOOTC_CHUNKAH CHUNKED_BOOTC_MAX_LAYERS CHUNKED_BOOTC_LABELS"
 do_chunked_bootc_chunk() {
-    set -euo pipefail
+    set -eu
     command -v ${CHUNKED_BOOTC_CHUNKAH} >/dev/null 2>&1 \
         || bbfatal "chunked-bootc: ${CHUNKED_BOOTC_CHUNKAH} not found in PATH (install chunkah on the build host or set CHUNKED_BOOTC_CHUNKAH)"
 
@@ -75,7 +75,7 @@ addtask chunked_bootc_hybrid after do_chunked_bootc_chunk before do_image
 do_chunked_bootc_hybrid[dirs] = "${IMGDEPLOYDIR}"
 do_chunked_bootc_hybrid[vardeps] += "CHUNKED_BOOTC_HYBRID CHUNKED_BOOTC_BASE_REF CHUNKED_BOOTC_BASE_SYMLINKS CHUNKED_BOOTC_BASE_MOUNTPOINTS CHUNKED_BOOTC_OSTREE CHUNKED_BOOTC_OSTREE_ENCAP CHUNKED_BOOTC_ASSEMBLE"
 do_chunked_bootc_hybrid() {
-    set -euo pipefail
+    set -eu
     [ "${CHUNKED_BOOTC_HYBRID}" = "1" ] || return 0
 
     command -v ${CHUNKED_BOOTC_OSTREE} >/dev/null 2>&1 || bbfatal "chunked-bootc: ostree not found"
