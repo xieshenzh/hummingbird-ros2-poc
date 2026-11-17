@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         libssl-dev \
+        libostree-dev \
         libzstd-dev \
         ostree \
         pkg-config \
