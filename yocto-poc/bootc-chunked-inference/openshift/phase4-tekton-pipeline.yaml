@@ -166,7 +166,7 @@ spec:
                 sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
                 kas checkout "$kas_file"
                 rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
-                cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
+                cp -a "$repo_dir/meta-chunked-bootc" "$KAS_WORK_DIR/meta-chunked-bootc"
                 cat > /tmp/ostree-encap <<'EOF'
                 #!/bin/sh
                 set -eu
@@ -202,7 +202,7 @@ spec:
                 bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
                 test -n "$bitbake_bin"
                 "$bitbake_bin" --version
-                kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+                kas build "$kas_file"
                 deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemuarm64"
                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
