@@ -7,6 +7,8 @@ set -euo pipefail
 OUT=${1:-/tmp/chunked-bootc-skopeo-static}
 SRC=${2:-/tmp/chunked-bootc-skopeo-src}
 REV=${SKOPEO_REV:-v1.24.1}
+GOOS=${GOOS:-linux}
+GOARCH=${GOARCH:-arm64}
 
 if [ ! -d "$SRC/.git" ]; then
     rm -rf "$SRC"
@@ -14,5 +16,6 @@ if [ ! -d "$SRC/.git" ]; then
 fi
 
 cd "$SRC"
-CGO_ENABLED=0 go build -tags containers_image_openpgp -trimpath -o "$OUT" ./cmd/skopeo
+CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+    go build -tags containers_image_openpgp -trimpath -o "$OUT" ./cmd/skopeo
 file "$OUT"

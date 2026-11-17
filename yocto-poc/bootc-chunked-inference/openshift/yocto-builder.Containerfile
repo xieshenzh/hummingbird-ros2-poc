@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
+        golang-go \
         libssl-dev \
         libostree-dev \
         libzstd-dev \

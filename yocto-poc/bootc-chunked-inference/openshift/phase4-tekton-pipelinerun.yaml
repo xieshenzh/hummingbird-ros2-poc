@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: anomalynet-v3-yocto-bootc-promotion-22
+  name: anomalynet-v3-yocto-bootc-promotion-23
   labels:
     app.kubernetes.io/name: anomalynet-v3-yocto-bootc-promotion
     app.kubernetes.io/part-of: anomalynet-promotion
