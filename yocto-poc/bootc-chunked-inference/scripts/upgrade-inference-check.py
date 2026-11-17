@@ -28,6 +28,12 @@ REG_GUEST = os.environ.get("CHUNKED_BOOTC_REGISTRY", "10.0.2.2:5000/generic-infe
 # usage: upgrade-check.py [from_tag] [to_tag]  (default v1 v2)
 FROM_TAG = sys.argv[1] if len(sys.argv) > 1 else "v1"
 NEW_TAG = sys.argv[2] if len(sys.argv) > 2 else "v2"
+# Registry tags may be deployment aliases (for example, v3-native) while the
+# immutable application release remains anomalynet-v3.  Keep that distinction
+# explicit so lifecycle validation does not conflate transport tags with the
+# model version reported by the service and version file.
+MODEL_VERSION = os.environ.get("CHUNKED_BOOTC_MODEL_VERSION",
+                               "anomalynet-" + NEW_TAG)
 
 QEMU = (
     "qemu-system-aarch64 -M virt -cpu cortex-a57 -smp 2 -m 2048 "
@@ -186,7 +192,7 @@ booted_img = before["status"]["booted"]["image"]["image"]["image"]
 print("\nbooted before switch: %s" % booted_img)
 if FROM_TAG not in booted_img:
     failures.append("boot 1: expected %s booted, got %s" % (FROM_TAG, booted_img))
-check_inference(child, "anomalynet-" + FROM_TAG, "before switch")
+check_inference(child, MODEL_VERSION, "before switch")
 
 # Ensure the guest-reachable registry is configured at runtime (deployment
 # /etc is writable); bootc's pull also needs the containers storage directory.
@@ -234,12 +240,12 @@ out = run(child, "cat /etc/chunked-bootc-version")
 print("/etc/chunked-bootc-version: %s" % out.strip())
 # The recipe writes the configured CHUNKED_BOOTC_VERSION verbatim, which is
 # the immutable model release name rather than the short registry tag.
-expected_model_version = "anomalynet-" + NEW_TAG
+expected_model_version = MODEL_VERSION
 if out.strip() != expected_model_version:
     failures.append("/etc/chunked-bootc-version is %r, expected %r" %
                     (out.strip(), expected_model_version))
 
-check_inference(child, "anomalynet-" + NEW_TAG, "after upgrade")
+check_inference(child, MODEL_VERSION, "after upgrade")
 
 # measured delta: ostree content diff between rollback and booted commits
 new_c = booted["ostree"]["checksum"]

@@ -742,3 +742,63 @@ kernel image during OCI layer chunking.
 6. After a successful artifact build, run boot/inference, publication only
    with runtime-provided credentials, upgrade, rollback, and interrupted-
    upgrade checks.
+
+## 2026-11-17 — Phase 4 promotion-30 ARM64 validation COMPLETE ✅
+
+### Promotion and artifact identity
+
+- Promotion-30 completed the source checkout, approved-model staging, cached
+  Yocto/BitBake build, hybrid OCI assembly, and artifact validation in
+  OpenShift.
+- The approved immutable model remains `anomalynet-v3`, SHA-256
+  `4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb`.
+- The generated OCI config is `linux/arm64`.
+- The runtime image contains `/usr/bin/skopeo` as a statically linked ARM64
+  executable. This fixes the earlier ARM64 bootc importer failure caused by
+  embedding the amd64 builder helper (`Exec format error`).
+- Local deployment artifact: `/Users/xiezhang/phase4-hybrid-native.oci`;
+  OCI index SHA-256:
+  `fd3ccbc9a849cddd6740155d04ce8ae230c8713c953b7091ca67dd60af208c47`.
+- Deployment-only local registry reference:
+  `localhost:5000/generic-inference-bootc:v3-native`.
+- Local registry digest:
+  `sha256:0b2b425a3e4397a81a893f54d9b9f5e8aa385f48dd0709db5cee42b22afe284e`.
+- No Quay.io or other external publication was performed.
+
+### Install, boot, and inference
+
+- `bootc install` completed successfully onto
+  `/tmp/phase4-v3-disk.img` using the local Lima Fedora aarch64 VM.
+- The installed disk booted in ARM64 QEMU with kernel
+  `6.6.160-rt31-yocto-preempt-rt`; `uname -v` confirmed `PREEMPT_RT`.
+- `/version` returned model `AnomalyNet`, version `anomalynet-v3`, and the
+  approved model SHA-256 above.
+- Normal inference passed with 32 samples of `50`:
+  classification `normal`, probability `0.9982409198829229`.
+- Anomaly inference passed with 16 samples of `50` followed by 16 samples of
+  `110`: classification `anomaly`, probability `1.0`.
+
+### Lifecycle safety checks
+
+- Same-release transaction check **PASSED** using
+  `bootc switch ...:v3-native` → `...:v3-native` with the native ARM64
+  Skopeo helper. The switch staged successfully, rebooted into the requested
+  deployment, retained the prior deployment as rollback, and repeated both
+  inference classifications successfully. The OSTree diff was produced.
+- Interrupted transaction check **PASSED**: SIGKILL during the same-release
+  `bootc switch` left the booted deployment unchanged; after poweroff and
+  reboot the system still booted cleanly with `PREEMPT_RT` and a consistent
+  bootc status.
+- The lifecycle harness now accepts `CHUNKED_BOOTC_MODEL_VERSION` because a
+  deployment tag (`v3-native`) is not the same identifier as the immutable
+  service version (`anomalynet-v3`).
+- A semantic version-changing upgrade/rollback is **NOT CLAIMED**: only one
+  approved release/image is available, so `v3-native` → `v3-native` validates
+  transaction and interruption safety but cannot demonstrate a model-version
+  change. A second approved image is required for that test.
+
+### Phase 4 disposition
+
+The approved `anomalynet-v3` image is validated for local ARM64 QEMU
+deployment, boot, inference, and bootc transaction safety. It remains a
+deployment-only artifact; external publication is intentionally out of scope.
