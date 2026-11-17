@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: anomalynet-v3-yocto-bootc-promotion-8
+  name: anomalynet-v3-yocto-bootc-promotion-9
   labels:
     app.kubernetes.io/name: anomalynet-v3-yocto-bootc-promotion
     app.kubernetes.io/part-of: anomalynet-promotion
@@ -20,3 +20,6 @@ spec:
     - name: model
       persistentVolumeClaim:
         claimName: anomalynet-v3-release
+    - name: cache
+      persistentVolumeClaim:
+        claimName: phase4-yocto-cache

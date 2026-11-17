@@ -15,8 +15,10 @@ repos:
   meta-chunked-bootc:
     path: meta-chunked-bootc
 
-local_conf_header:
+  local_conf_header:
   bootc-inference: |
+    DL_DIR = "/workspace/cache/downloads"
+    SSTATE_DIR = "/workspace/cache/sstate-cache"
     INIT_MANAGER = "systemd"
     INHERIT += "rm_work"
     DISTRO_FEATURES += "usrmerge"
