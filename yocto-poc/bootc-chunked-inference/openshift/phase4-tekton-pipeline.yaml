@@ -149,6 +149,8 @@ spec:
               kas_file="kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
               sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
               kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+              rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
+              cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
               chunkah_class="meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
               sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
               ! grep -q 'set -euo pipefail' "$chunkah_class"
