@@ -133,77 +133,78 @@ spec:
             image: $(params.builder-image)
             workingDir: $(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference
             script: |
-              #!/usr/bin/env bash
-              set -euo pipefail
-              for tool in kas buildah chunkah ostree ostree-encap skopeo; do
-                command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
-              done
-              test "$(params.release)" = anomalynet-v3
-               # The OpenShift builder is amd64, while this image targets qemuarm64.
-               # Build the helper explicitly for linux/arm64; copying the apt
-               # skopeo binary would make bootc switch fail with Exec format error.
-               rm -rf /tmp/chunked-bootc-skopeo-src
-               git clone --depth 1 --branch v1.24.1 \
-                 https://github.com/containers/skopeo /tmp/chunked-bootc-skopeo-src
-               cd /tmp/chunked-bootc-skopeo-src
-               mkdir -p /tmp/go-build /tmp/go-mod
-               GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod \
-                 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-                 go build -tags containers_image_openpgp -trimpath \
-                 -o /tmp/chunked-bootc-skopeo-static ./cmd/skopeo
-               test "$(file -b /tmp/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
-              mkdir -p "$(workspaces.cache.path)/downloads" \
-                "$(workspaces.cache.path)/sstate-cache" \
-                "$(workspaces.cache.path)/kas-work"
-              export KAS_WORK_DIR="$(workspaces.cache.path)/kas-work"
-              # Older revisions of this branch placed local_conf_header under
-              # repos. Normalize that layout before KAS validates the manifest.
-              kas_file="kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
-              sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
-              kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
-              rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
-              cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
-              cat > /tmp/ostree-encap <<'EOF'
-              #!/bin/sh
-              set -eu
-              test "$#" -eq 3
-              exec /usr/bin/ostree-ext-cli container encapsulate --repo "$1" "$2" "$3"
-              EOF
-              chmod 0755 /tmp/ostree-encap
-              sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
-              chunkah_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
-              sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
-              ! grep -q 'set -euo pipefail' "$chunkah_class"
-              oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
-              sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
-              ! grep -q 'set -euo pipefail' "$oci_class"
-              sed -i 's#CHUNKED_BOOTC_BUILDAH} from scratch#CHUNKED_BOOTC_BUILDAH} from --arch arm64 scratch#' "$oci_class"
-              assemble_script="$KAS_WORK_DIR/meta-chunked-bootc/scripts/assemble-chunked-bootc.py"
-              sed -i '/config = dict(c_config)/a\config["architecture"] = "arm64"' "$assemble_script"
-              python3 - "$chunkah_class" <<'PY'
-              from pathlib import Path
-              import sys
-              path = Path(sys.argv[1])
-              text = path.read_text()
-              text = text.replace('do_chunked_bootc_chunk[fakeroot] = "1"\n', '')
-              start = text.find('    ${CHUNKED_BOOTC_CHUNKAH} build')
-              end_marker = '-o "oci:${out}"'
-              end = text.find(end_marker, start)
-              if start < 0 or end < 0:
-                  raise SystemExit("Chunkah invocation not found")
-              end += len(end_marker)
-              new = '''    rm -rf "${WORKDIR}/chunked-bootc-rootfs"; cp -r "${IMAGE_ROOTFS}" "${WORKDIR}/chunked-bootc-rootfs"; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${WORKDIR}/chunked-bootc-rootfs" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" -o "oci:${out}"'''
-              path.write_text(text[:start] + new + text[end:])
-              PY
-              bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
-              test -n "$bitbake_bin"
-              "$bitbake_bin" --version
-              kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
-              deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemuarm64"
-              test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
-              cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
-              sha256sum models/$(params.release)/model.json > "$(workspaces.output.path)/model.sha256"
-              printf '%s\n' "$(params.release)" > "$(workspaces.output.path)/model-release"
+                #!/usr/bin/env bash
+                set -euo pipefail
+                cd "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference"
+                for tool in kas buildah chunkah ostree ostree-encap skopeo; do
+                 command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
+                done
+                test "$(params.release)" = anomalynet-v3
+                # The OpenShift builder is amd64, while this image targets qemuarm64.
+                # Build the helper explicitly for linux/arm64; copying the apt
+                # skopeo binary would make bootc switch fail with Exec format error.
+                rm -rf /tmp/chunked-bootc-skopeo-src
+                git clone --depth 1 --branch v1.24.1 \
+                  https://github.com/containers/skopeo /tmp/chunked-bootc-skopeo-src
+                cd /tmp/chunked-bootc-skopeo-src
+                mkdir -p /tmp/go-build /tmp/go-mod
+                GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod \
+                  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+                  go build -tags containers_image_openpgp -trimpath \
+                  -o /tmp/chunked-bootc-skopeo-static ./cmd/skopeo
+                test "$(file -b /tmp/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
+                mkdir -p "$(workspaces.cache.path)/downloads" \
+                 "$(workspaces.cache.path)/sstate-cache" \
+                 "$(workspaces.cache.path)/kas-work"
+                export KAS_WORK_DIR="$(workspaces.cache.path)/kas-work"
+                # Older revisions of this branch placed local_conf_header under
+                # repos. Normalize that layout before KAS validates the manifest.
+                kas_file="kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
+                sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
+                kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+                rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
+                cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
+                cat > /tmp/ostree-encap <<'EOF'
+                #!/bin/sh
+                set -eu
+                test "$#" -eq 3
+                exec /usr/bin/ostree-ext-cli container encapsulate --repo "$1" "$2" "$3"
+                EOF
+                chmod 0755 /tmp/ostree-encap
+                sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
+                chunkah_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
+                sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
+                ! grep -q 'set -euo pipefail' "$chunkah_class"
+                oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
+                sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
+                ! grep -q 'set -euo pipefail' "$oci_class"
+                sed -i 's#CHUNKED_BOOTC_BUILDAH} from scratch#CHUNKED_BOOTC_BUILDAH} from --arch arm64 scratch#' "$oci_class"
+                assemble_script="$KAS_WORK_DIR/meta-chunked-bootc/scripts/assemble-chunked-bootc.py"
+                sed -i '/config = dict(c_config)/a\config["architecture"] = "arm64"' "$assemble_script"
+                python3 - "$chunkah_class" <<'PY'
+                from pathlib import Path
+                import sys
+                path = Path(sys.argv[1])
+                text = path.read_text()
+                text = text.replace('do_chunked_bootc_chunk[fakeroot] = "1"\n', '')
+                start = text.find('    ${CHUNKED_BOOTC_CHUNKAH} build')
+                end_marker = '-o "oci:${out}"'
+                end = text.find(end_marker, start)
+                if start < 0 or end < 0:
+                   raise SystemExit("Chunkah invocation not found")
+                end += len(end_marker)
+                new = '''    rm -rf "${WORKDIR}/chunked-bootc-rootfs"; cp -r "${IMAGE_ROOTFS}" "${WORKDIR}/chunked-bootc-rootfs"; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${WORKDIR}/chunked-bootc-rootfs" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" -o "oci:${out}"'''
+                path.write_text(text[:start] + new + text[end:])
+                PY
+                bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
+                test -n "$bitbake_bin"
+                "$bitbake_bin" --version
+                kas build kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+                deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemuarm64"
+                test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
+                cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
+                sha256sum models/$(params.release)/model.json > "$(workspaces.output.path)/model.sha256"
+                printf '%s\n' "$(params.release)" > "$(workspaces.output.path)/model-release"
       params:
         - name: builder-image
           value: $(params.yocto-builder-image)
