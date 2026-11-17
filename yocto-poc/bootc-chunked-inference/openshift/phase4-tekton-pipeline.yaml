@@ -162,6 +162,9 @@ spec:
               chunkah_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
               sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
               ! grep -q 'set -euo pipefail' "$chunkah_class"
+              oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
+              sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
+              ! grep -q 'set -euo pipefail' "$oci_class"
               python3 - "$chunkah_class" <<'PY'
               from pathlib import Path
               import sys
