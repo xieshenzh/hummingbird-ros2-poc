@@ -15,7 +15,7 @@ repos:
   meta-chunked-bootc:
     path: meta-chunked-bootc
 
-  local_conf_header:
+local_conf_header:
   bootc-inference: |
     DL_DIR = "/workspace/cache/downloads"
     SSTATE_DIR = "/workspace/cache/sstate-cache"
@@ -35,4 +35,4 @@ repos:
     CHUNKED_BOOTC_OSTREE_ENCAP = "/usr/bin/ostree-encap"
     CHUNKED_BOOTC_SKOPEO_STATIC = "/tmp/chunked-bootc-skopeo-static"
     BB_ENV_PASSTHROUGH_ADDITIONS:append = " BOOTC_MODEL_RELEASE"
-    HOSTTOOLS += "buildah chunkah ostree ostree-encap skopeo"
+    HOSTTOOLS += "buildah chunkah ostree-encap skopeo"
