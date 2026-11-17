@@ -166,7 +166,7 @@ spec:
               if start < 0 or end < 0:
                   raise SystemExit("Chunkah invocation not found")
               end += len(end_marker)
-              new = '''    buildah unshare sh -c "rm -rf '${WORKDIR}/chunked-bootc-rootfs'; cp -r '${IMAGE_ROOTFS}' '${WORKDIR}/chunked-bootc-rootfs'; chown -R 0:0 '${WORKDIR}/chunked-bootc-rootfs'; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs '${WORKDIR}/chunked-bootc-rootfs' --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config '$cfg' -o 'oci:${out}'"'''
+              new = '''    rm -rf "${WORKDIR}/chunked-bootc-rootfs"; cp -r "${IMAGE_ROOTFS}" "${WORKDIR}/chunked-bootc-rootfs"; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${WORKDIR}/chunked-bootc-rootfs" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" -o "oci:${out}"'''
               path.write_text(text[:start] + new + text[end:])
               PY
               bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
