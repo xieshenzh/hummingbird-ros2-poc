@@ -1,0 +1,9 @@
+# Cluster prerequisite for the Phase 5 VM simulation.
+# Apply once per cluster, after installing the kubevirt-hyperconverged
+# operator from the Red Hat catalog.
+apiVersion: hco.kubevirt.io/v1beta1
+kind: HyperConverged
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: openshift-cnv
+spec: {}

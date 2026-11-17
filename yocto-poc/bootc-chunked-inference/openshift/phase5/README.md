@@ -13,8 +13,10 @@ imported into a CDI PVC named `phase4-bootc-disk-anomalynet-v3` (or the VM
 manifest must be changed to the actual PVC). This conversion is a separate
 image-preparation step; it is not a Tekton promotion task.
 
-OpenShift Virtualization is not currently installed in the connected cluster,
-so this manifest is a checked-in contract and has not been applied.
+OpenShift Virtualization is being activated in the connected cluster, so this
+manifest is a checked-in contract. The operator and
+`phase5/hyperconverged.yaml` have now been applied; the KubeVirt/CDI operands
+must report ready before the VM manifest can be applied.
 
 ## Guest contract
 
@@ -34,8 +36,8 @@ OS image.
 
 ## First-device validation sequence
 
-1. Install the OpenShift Virtualization operator and verify KubeVirt/CDI are
-   available.
+1. Install the OpenShift Virtualization operator and apply
+   `hyperconverged.yaml`; verify KubeVirt/CDI are available.
 2. Convert the approved ARM64 hybrid OCI artifact into a bootable disk and
    import it as `phase4-bootc-disk-anomalynet-v3`.
 3. Apply `edge-device-vm.yaml`.
