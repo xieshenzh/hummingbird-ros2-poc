@@ -5,8 +5,9 @@ BOOTC_INFERENCE_RUNTIME ?= "edge-inference-runtime"
 BOOTC_INFERENCE_SERVICE ?= "edge-inference-service"
 BOOTC_INFERENCE_MODEL ?= "edge-inference-model"
 BOOTC_INFERENCE_API_PORT ?= "8080"
+BOOTC_EDGE_DEVICE_AGENT ?= "edge-device-agent"
 
-IMAGE_INSTALL:append = " ${BOOTC_INFERENCE_RUNTIME} ${BOOTC_INFERENCE_SERVICE} ${BOOTC_INFERENCE_MODEL}"
+IMAGE_INSTALL:append = " ${BOOTC_INFERENCE_RUNTIME} ${BOOTC_INFERENCE_SERVICE} ${BOOTC_INFERENCE_MODEL} ${BOOTC_EDGE_DEVICE_AGENT}"
 
 IMAGE_FEATURES:append = " ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', '', '', d)}"
 CHUNKED_BOOTC_INFERENCE_MODEL ?= "${BOOTC_MODEL_RELEASE}"
@@ -24,6 +25,9 @@ python do_bootc_inference_validate() {
     service = os.path.join(rootfs, d.getVar('systemd_system_unitdir').lstrip('/'), 'edge-inference.service')
     if not os.path.exists(service):
         bb.fatal('inference systemd service missing: %s' % service)
+    agent = os.path.join(rootfs, d.getVar('bindir').lstrip('/'), 'edge-device-agent')
+    if not os.path.exists(agent):
+        bb.fatal('edge device agent missing: %s' % agent)
 }
 addtask bootc_inference_validate after do_rootfs before do_image
 

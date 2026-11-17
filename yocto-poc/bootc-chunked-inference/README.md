@@ -178,6 +178,17 @@ Edge or MicroShift host configuration. A production Red Hat deployment should
 use the supported RHEL/Image Mode + MicroShift path while reusing the model
 release and OCI validation concepts demonstrated here.
 
+## Phase 5: OpenShift Virtualization edge-device simulation
+
+Phase 5 begins with one VM, not a normal Deployment. The VM contract and
+prerequisites are in `openshift/phase5/README.md` and
+`openshift/phase5/edge-device-vm.yaml`. The bootable hybrid OCI artifact must
+first be converted to a raw/qcow2 disk and imported into a CDI PVC; KubeVirt
+does not boot an OCI layout directly. The image also includes a guest-local
+`edge-device-agent` for device identity, simulated temperature, and health
+state. OpenShift Virtualization must be installed before this manifest can be
+applied.
+
 ## Phase 3: OpenShift AI model workflow
 
 Phase 3 keeps training outside BitBake and runs the reproducible fine-tuning

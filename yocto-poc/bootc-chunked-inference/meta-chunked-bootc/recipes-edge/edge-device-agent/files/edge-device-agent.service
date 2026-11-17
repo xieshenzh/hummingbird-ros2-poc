@@ -1,0 +1,16 @@
+[Unit]
+Description=Simulated edge-device identity and temperature agent
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/edge-device-agent
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/run/edge-device
+
+[Install]
+WantedBy=multi-user.target

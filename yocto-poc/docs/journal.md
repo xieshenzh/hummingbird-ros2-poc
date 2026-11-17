@@ -822,3 +822,22 @@ promotion `PipelineRun`:
 - Updating the builder is a separate OpenShift BuildConfig operation. A new
   builder digest must be smoke-tested and explicitly pinned before submitting
   a later promotion run.
+
+### Phase 5 kickoff
+
+Phase 5 starts with a single OpenShift Virtualization edge-device VM rather
+than a Kubernetes Deployment or a fleet. The checked-in contract is
+`bootc-chunked-inference/openshift/phase5/edge-device-vm.yaml`:
+
+- the VM uses a CDI-imported raw/qcow2 disk containing the approved ARM64
+  hybrid bootc artifact;
+- the guest image now includes `edge-device-agent`, which reports device
+  identity and simulated temperature on port 8090 and writes local state under
+  `/run/edge-device`;
+- VM identity and sensor values are supplied through the VM's NoCloud config;
+- the manifest has not been applied because the connected cluster does not
+  currently expose OpenShift Virtualization/KubeVirt resources.
+
+The first acceptance gate is VM boot, bootc status, inference health, device
+identity, and sensor state. Fleet waves and rollback orchestration follow only
+after that single-device gate passes.
