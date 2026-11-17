@@ -144,6 +144,10 @@ spec:
                 "$(workspaces.cache.path)/sstate-cache" \
                 "$(workspaces.cache.path)/kas-work"
               export KAS_WORK_DIR="$(workspaces.cache.path)/kas-work"
+              # Older revisions of this branch placed local_conf_header under
+              # repos. Normalize that layout before KAS validates the manifest.
+              kas_file="kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
+              sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
               kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
               chunkah_class="meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
               sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
