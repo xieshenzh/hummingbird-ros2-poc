@@ -151,9 +151,22 @@ spec:
               kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
               rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
               cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
-              chunkah_class="meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
+              chunkah_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
               sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
               ! grep -q 'set -euo pipefail' "$chunkah_class"
+              python3 - "$chunkah_class" <<'PY'
+              from pathlib import Path
+              import sys
+              path = Path(sys.argv[1])
+              text = path.read_text()
+              old = '    ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${IMAGE_ROOTFS}"'
+              new = '''    rm -rf "${WORKDIR}/chunked-bootc-rootfs"
+                  cp -r "${IMAGE_ROOTFS}" "${WORKDIR}/chunked-bootc-rootfs"
+                  ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${WORKDIR}/chunked-bootc-rootfs"'''
+              if old not in text:
+                  raise SystemExit("Chunkah invocation not found")
+              path.write_text(text.replace(old, new))
+              PY
               bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
               test -n "$bitbake_bin"
               "$bitbake_bin" --version
