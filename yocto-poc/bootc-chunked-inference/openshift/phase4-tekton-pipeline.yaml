@@ -146,7 +146,9 @@ spec:
                git clone --depth 1 --branch v1.24.1 \
                  https://github.com/containers/skopeo /tmp/chunked-bootc-skopeo-src
                cd /tmp/chunked-bootc-skopeo-src
-               CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+               mkdir -p /tmp/go-build /tmp/go-mod
+               GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod \
+                 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
                  go build -tags containers_image_openpgp -trimpath \
                  -o /tmp/chunked-bootc-skopeo-static ./cmd/skopeo
                test "$(file -b /tmp/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
