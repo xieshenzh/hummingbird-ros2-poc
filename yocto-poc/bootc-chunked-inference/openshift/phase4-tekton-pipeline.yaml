@@ -160,11 +160,14 @@ spec:
               path = Path(sys.argv[1])
               text = path.read_text()
               text = text.replace('do_chunked_bootc_chunk[fakeroot] = "1"\n', '')
-              old = '    ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${IMAGE_ROOTFS}" \\\\n        --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} \\\\n        --config "$cfg" \\\\n        -o "oci:${out}"'
-              new = '''    buildah unshare sh -c "rm -rf '${WORKDIR}/chunked-bootc-rootfs'; cp -r '${IMAGE_ROOTFS}' '${WORKDIR}/chunked-bootc-rootfs'; chown -R 0:0 '${WORKDIR}/chunked-bootc-rootfs'; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs '${WORKDIR}/chunked-bootc-rootfs' --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config '$cfg' -o 'oci:${out}'"'''
-              if old not in text:
+              start = text.find('    ${CHUNKED_BOOTC_CHUNKAH} build')
+              end_marker = '-o "oci:${out}"'
+              end = text.find(end_marker, start)
+              if start < 0 or end < 0:
                   raise SystemExit("Chunkah invocation not found")
-              path.write_text(text.replace(old, new))
+              end += len(end_marker)
+              new = '''    buildah unshare sh -c "rm -rf '${WORKDIR}/chunked-bootc-rootfs'; cp -r '${IMAGE_ROOTFS}' '${WORKDIR}/chunked-bootc-rootfs'; chown -R 0:0 '${WORKDIR}/chunked-bootc-rootfs'; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs '${WORKDIR}/chunked-bootc-rootfs' --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config '$cfg' -o 'oci:${out}'"'''
+              path.write_text(text[:start] + new + text[end:])
               PY
               bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
               test -n "$bitbake_bin"
