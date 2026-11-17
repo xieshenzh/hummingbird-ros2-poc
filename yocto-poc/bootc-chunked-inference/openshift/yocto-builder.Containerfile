@@ -11,7 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
-        golang-go \
         libssl-dev \
         libostree-dev \
         libzstd-dev \
@@ -20,6 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         skopeo \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Debian Bookworm's Go 1.19 cannot parse the go.mod shipped by the pinned
+# Skopeo release. Install a current Go toolchain for the cross-compile; the
+# resulting helper remains CGO-free and target-native.
+ARG GO_VERSION=1.25.7
+RUN curl --fail --location --retry 3 \
+        "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+        | tar -C /usr/local -xz
+ENV PATH=/usr/local/go/bin:$PATH
 
 # Chunkah v0.7.1 uses Rust edition 2024, which is newer than Debian
 # Bookworm's packaged Cargo. Install a current stable toolchain in the image
