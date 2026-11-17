@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         libssl-dev \
+        libzstd-dev \
         ostree \
         pkg-config \
         skopeo \
@@ -61,7 +62,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-ostree-ext = "0.15.2"
+ostree-ext = "=0.15.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 EOF
 RUN cat > /tmp/ostree-ext-cli/src/main.rs <<'EOF'
