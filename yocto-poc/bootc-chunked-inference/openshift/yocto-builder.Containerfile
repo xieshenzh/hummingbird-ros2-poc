@@ -49,6 +49,29 @@ test "$#" -eq 3
 exec ostree container encapsulate --repo="$1" "$2" "$3"
 EOF
 
+# Debian Bookworm's libostree predates the native-container CLI. Build the
+# ostree-ext CLI from the published crate so hybrid assembly can encapsulate
+# the OSTree commit without requiring a privileged container.
+RUN mkdir -p /tmp/ostree-ext-cli/src
+RUN cat > /tmp/ostree-ext-cli/Cargo.toml <<'EOF'
+[package]
+name = "ostree-ext-cli-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+ostree-ext = "0.15.2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+EOF
+RUN cat > /tmp/ostree-ext-cli/src/main.rs <<'EOF'
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    ostree_ext::cli::run_from_iter(std::env::args()).await
+}
+EOF
+RUN cd /tmp/ostree-ext-cli && cargo build --release && install -m 0755 target/release/ostree-ext-cli-wrapper /usr/bin/ostree-ext-cli && rm -rf /tmp/ostree-ext-cli /root/.cargo/registry /root/.cargo/git
+
 RUN set -eux; \
     kas --version; \
     buildah --version; \

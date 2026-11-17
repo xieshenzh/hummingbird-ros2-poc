@@ -155,7 +155,7 @@ spec:
               #!/bin/sh
               set -eu
               test "$#" -eq 3
-              exec ostree container encapsulate --repo "$1" "$2" "$3"
+              exec /usr/bin/ostree-ext-cli container encapsulate --repo "$1" "$2" "$3"
               EOF
               chmod 0755 /tmp/ostree-encap
               sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
