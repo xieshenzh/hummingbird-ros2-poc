@@ -686,3 +686,59 @@ NOTE: not yet re-baked from the new layout — the layer wiring is the
 same mechanism phase1-5b.yaml uses for meta-hb-bootc, but the first
 `vm-sync.sh` + build from `end-to-end/kas/phase3.yaml` should be watched
 as the confirmation.
+
+## 2026-11-17 — Phase 4 OpenShift handoff
+
+### Completed before cluster shutdown
+
+- Approved immutable release: `anomalynet-v3`.
+- Approved model SHA-256:
+  `4451989831e5551be121a687cfdb6baafc5b456703c47d64eac74b4ed7554edb`.
+- Builder image validated in OpenShift with KAS/BitBake, Buildah, Chunkah,
+  OSTree, `ostree-encap`, and Skopeo:
+  `image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:6dcdfdc806e73d5c4dad039634ef6adcfc2f1ef15a7264ad78477f91386e34f0`.
+- The Phase 4 workspace PVC was expanded from 30 GiB to 60 GiB after the
+  initial cold build exhausted the volume. The resize completed successfully.
+- Failed stale PipelineRuns `-2`, `-3`, and `-4` were removed. The model
+  release PVC was retained because it is still required by the inference and
+  promotion workloads.
+- Source fixes were pushed to `origin/add-ros2-base-images` through commit
+  `3e40657`. The branch now contains the Skopeo staging fix and POSIX shell
+  compatibility fix.
+
+### Last run and failure
+
+`PipelineRun/anomalynet-v3-yocto-bootc-promotion-8` reached:
+
+- `clone-source`: Succeeded
+- `stage-approved-model`: Succeeded
+- `yocto-build`: Failed after 3,498 of 3,509 tasks
+
+The final failure was in `do_chunked_bootc_chunk`, while Chunkah walked the
+generated rootfs:
+
+```text
+failed to walk rootfs
+getting metadata for /boot/Image-6.6.160-rt31-yocto-preempt-rt
+Bad address (os error 14)
+```
+
+This is distinct from the earlier resolved failures involving workspace size,
+missing staged Skopeo, and `/bin/sh` rejecting `pipefail`. The rootfs itself
+completed successfully; the failure is specific to Chunkah processing the
+kernel image during OCI layer chunking.
+
+### Resume checklist
+
+1. Recreate/login to the OpenShift cluster and verify namespace/PVCs.
+2. Preserve the 60 GiB `phase4-yocto-workspace` PVC, or recreate it at 60 GiB
+   if the cluster teardown deleted it.
+3. Inspect the full `do_chunked_bootc_chunk` log and Chunkah command/output.
+4. Investigate the Chunkah `Bad address` failure on the kernel file before
+   retrying. Check Chunkah version/resource limits, rootfs file metadata, and
+   whether the kernel file needs special handling or exclusion from content
+   chunking.
+5. Do not publish an OCI image until `validate-artifact` succeeds.
+6. After a successful artifact build, run boot/inference, publication only
+   with runtime-provided credentials, upgrade, rollback, and interrupted-
+   upgrade checks.
