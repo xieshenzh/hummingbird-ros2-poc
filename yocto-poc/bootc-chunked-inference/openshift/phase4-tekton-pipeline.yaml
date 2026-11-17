@@ -27,7 +27,7 @@ spec:
       description: >-
         Pinned image containing kas/BitBake and the host tools required by the
         repository classes: buildah, chunkah, ostree, ostree-encap and skopeo.
-      default: image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:a10e37e8d78760154cbd6163a61aee1d8c7969ae54aece556c15d0d5c1b92922
+      default: image-registry.openshift-image-registry.svc:5000/my-first-model/yocto-bootc-builder@sha256:63615f278a980c10932ad0442f7dba837035b955c187ad3b28ad78daafcc81b6
     - name: publish-image
       type: string
       description: Optional docker:// destination; empty means build-only.
@@ -143,19 +143,12 @@ spec:
                  command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
                 done
                 test "$(params.release)" = anomalynet-v3
-                # The OpenShift builder is amd64, while this image targets qemuarm64.
-                # Build the helper explicitly for linux/arm64; copying the apt
-                # skopeo binary would make bootc switch fail with Exec format error.
-                rm -rf /tmp/chunked-bootc-skopeo-src
-                git clone --depth 1 --branch v1.24.1 \
-                  https://github.com/containers/skopeo /tmp/chunked-bootc-skopeo-src
-                cd /tmp/chunked-bootc-skopeo-src
-                mkdir -p /tmp/go-build /tmp/go-mod
-                GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod \
-                  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-                  go build -tags containers_image_openpgp -trimpath \
-                  -o /tmp/chunked-bootc-skopeo-static ./cmd/skopeo
-                test "$(file -b /tmp/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
+                # The builder image is created and digest-pinned before this
+                # PipelineRun.  Its final stage already contains the static
+                # linux/arm64 helper; compilation is deliberately excluded
+                # from the promotion run.
+                test -x /usr/local/libexec/chunked-bootc-skopeo-static
+                test "$(file -b /usr/local/libexec/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
                 mkdir -p "$(workspaces.cache.path)/downloads" \
                  "$(workspaces.cache.path)/sstate-cache" \
                  "$(workspaces.cache.path)/kas-work"

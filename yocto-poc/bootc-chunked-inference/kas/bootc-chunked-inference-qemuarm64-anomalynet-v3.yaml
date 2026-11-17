@@ -33,6 +33,8 @@ local_conf_header:
     BOOTC_MODEL_FORMAT = "json-anomalynet"
     CHUNKED_BOOTC_MAX_LAYERS = "32"
     CHUNKED_BOOTC_OSTREE_ENCAP = "/usr/bin/ostree-encap"
-    CHUNKED_BOOTC_SKOPEO_STATIC = "/tmp/chunked-bootc-skopeo-static"
+    # Supplied by the prebuilt, digest-pinned OpenShift builder image.  The
+    # promotion PipelineRun must not compile or download build tools.
+    CHUNKED_BOOTC_SKOPEO_STATIC = "/usr/local/libexec/chunked-bootc-skopeo-static"
     BB_ENV_PASSTHROUGH_ADDITIONS:append = " BOOTC_MODEL_RELEASE"
     HOSTTOOLS += "buildah chunkah ostree-encap skopeo"

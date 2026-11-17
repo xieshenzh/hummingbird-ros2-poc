@@ -802,3 +802,23 @@ kernel image during OCI layer chunking.
 The approved `anomalynet-v3` image is validated for local ARM64 QEMU
 deployment, boot, inference, and bootc transaction safety. It remains a
 deployment-only artifact; external publication is intentionally out of scope.
+
+### Builder separation correction
+
+The Phase 4 promotion boundary was tightened after validation. The builder is
+now a separately built prerequisite, not something completed or modified by a
+promotion `PipelineRun`:
+
+- `yocto-builder.Containerfile` uses intermediate build-only stages for Go and
+  Rust compilation. The final builder stage copies only the completed Chunkah,
+  `ostree-ext` CLI, and static ARM64 Skopeo binaries; Go/Rust toolchains and
+  source trees are not present in the final image.
+- The builder was rebuilt and smoke-tested before promotion with digest
+  `sha256:63615f278a980c10932ad0442f7dba837035b955c187ad3b28ad78daafcc81b6`.
+  The static helper was verified as an AArch64, statically linked ELF.
+- The digest-pinned `yocto-builder-image` pipeline parameter now references
+  that image. The Tekton build task only checks for the preinstalled tools and
+  helper; it no longer clones Skopeo, installs Go, or compiles anything.
+- Updating the builder is a separate OpenShift BuildConfig operation. A new
+  builder digest must be smoke-tested and explicitly pinned before submitting
+  a later promotion run.

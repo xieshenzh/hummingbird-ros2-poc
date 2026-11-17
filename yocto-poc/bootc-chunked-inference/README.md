@@ -281,10 +281,14 @@ oc -n my-first-model logs -f pipelinerun/anomalynet-v3-yocto-bootc-promotion
 ```
 
 The `yocto-builder-image` parameter is a contract, not a claim that the
-generic KAS image contains every host tool. Before submitting the run, use a
-cluster-approved image derived from the KAS image and pin it by digest. It
-must contain `kas`, BitBake, `buildah`, `chunkah`, `ostree`, `ostree-encap`,
-and `skopeo`; the pipeline fails closed if any tool is absent. Set
+generic KAS image contains every host tool. Build and smoke-test the
+cluster-approved builder image **before** creating the promotion PipelineRun,
+then pin the resulting image by digest. It must contain `kas`, BitBake,
+`buildah`, `chunkah`, `ostree`, `ostree-encap`, `skopeo`, and the static
+`linux/arm64` Skopeo helper at
+`/usr/local/libexec/chunked-bootc-skopeo-static`; the pipeline fails closed if
+any tool is absent. The promotion run does not install packages, download
+toolchains, or compile builder tools. Set
 `publish-image`, `publish-username`, and `publish-password` only at runtime
 (prefer a Secret-backed Tekton parameter or an internal registry service
 account); no OpenShift token or registry password belongs in Git.
@@ -306,9 +310,12 @@ oc -n my-first-model get istag yocto-bootc-builder:5.2
 ```
 
 The binary build context contains `yocto-builder.Containerfile`. It uses
-`ghcr.io/siemens/kas/kas:5.2-debian-bookworm` as its base and copies Chunkah
-from the pinned `coreos/chunkah` `v0.7.1` source commit, compiled inside the
-Debian Bookworm base to avoid a glibc mismatch. The image exposes an
-`ostree-encap` compatibility wrapper backed by the upstream
-`ostree container encapsulate` command. The Containerfile performs a tool
-smoke test before the image is accepted.
+`ghcr.io/siemens/kas/kas:5.2-debian-bookworm` as its base. Named intermediate
+Containerfile stages compile Chunkah, the `ostree-ext` CLI wrapper, and the
+static ARM64 Skopeo helper; the final builder stage copies only those finished
+runtime tools and contains no Go/Rust toolchain or source tree. Chunkah is
+compiled against Debian Bookworm to avoid a glibc mismatch. The image exposes
+an `ostree-encap` compatibility wrapper backed by the compiled `ostree-ext`
+CLI. The Containerfile performs a tool smoke test before the image is
+accepted. Rebuild this image and update the digest-pinned
+`yocto-builder-image` parameter before submitting a new promotion run.
