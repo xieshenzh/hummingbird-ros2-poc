@@ -20,6 +20,7 @@ IMAGE_CMD:oci = "chunked_bootc_oci_build"
 do_image_oci[network] = "1"
 
 CHUNKED_BOOTC_BUILDAH ?= "buildah"
+CHUNKED_BOOTC_OCI_ARCH ?= "arm64"
 CHUNKED_BOOTC_OCI_LABELS ?= "ostree.bootable=1 containers.bootc=1"
 # "oci" = OCI layout directory, "oci-archive" = single-file archive
 CHUNKED_BOOTC_OUTPUT_TYPE ?= "oci"
@@ -47,7 +48,7 @@ chunked_bootc_oci_build() {
     # COPY semantics).
     local img="chunked-bootc-oci-${IMAGE_BASENAME}"
     local run="env -u LD_PRELOAD PATH=/usr/bin:/bin PSEUDO_DISABLED=1"
-    local ctr="$($run ${CHUNKED_BOOTC_BUILDAH} from scratch)"
+    local ctr="$($run ${CHUNKED_BOOTC_BUILDAH} from --arch ${CHUNKED_BOOTC_OCI_ARCH} scratch)"
     $run ${CHUNKED_BOOTC_BUILDAH} add "$ctr" "${IMAGE_ROOTFS}"
 
     local lbl args=""

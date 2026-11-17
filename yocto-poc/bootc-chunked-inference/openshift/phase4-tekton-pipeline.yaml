@@ -165,6 +165,9 @@ spec:
               oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
               sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
               ! grep -q 'set -euo pipefail' "$oci_class"
+              sed -i 's#CHUNKED_BOOTC_BUILDAH} from scratch#CHUNKED_BOOTC_BUILDAH} from --arch arm64 scratch#' "$oci_class"
+              assemble_script="$KAS_WORK_DIR/meta-chunked-bootc/scripts/assemble-chunked-bootc.py"
+              sed -i '/config = dict(c_config)/a\config["architecture"] = "arm64"' "$assemble_script"
               python3 - "$chunkah_class" <<'PY'
               from pathlib import Path
               import sys

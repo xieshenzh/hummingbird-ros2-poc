@@ -80,6 +80,7 @@ layers = [dict(base_layer)] + [dict(l) for l in c_manifest["layers"]]
 diff_ids = [base_diffid] + list(c_config["rootfs"]["diff_ids"])
 
 config = dict(c_config)
+config["architecture"] = "arm64"
 config["rootfs"]["diff_ids"] = diff_ids
 # layers_with_history() requires one history entry per layer
 config.setdefault("history", []).insert(
