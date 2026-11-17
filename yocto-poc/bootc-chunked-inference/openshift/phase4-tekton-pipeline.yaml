@@ -135,7 +135,10 @@ spec:
             script: |
                 #!/usr/bin/env bash
                 set -euo pipefail
-                cd "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference"
+                repo_dir="$(find "$(workspaces.source.path)" -type d \
+                 -path '*/yocto-poc/bootc-chunked-inference' -print -quit)"
+                test -n "$repo_dir"
+                cd "$repo_dir"
                 for tool in kas buildah chunkah ostree ostree-encap skopeo; do
                  command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 20; }
                 done
@@ -159,9 +162,9 @@ spec:
                 export KAS_WORK_DIR="$(workspaces.cache.path)/kas-work"
                 # Older revisions of this branch placed local_conf_header under
                 # repos. Normalize that layout before KAS validates the manifest.
-                kas_file="kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
+                kas_file="$repo_dir/kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
                 sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
-                kas checkout kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml
+                kas checkout "$kas_file"
                 rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
                 cp -a meta-chunked-bootc "$KAS_WORK_DIR/meta-chunked-bootc"
                 cat > /tmp/ostree-encap <<'EOF'
