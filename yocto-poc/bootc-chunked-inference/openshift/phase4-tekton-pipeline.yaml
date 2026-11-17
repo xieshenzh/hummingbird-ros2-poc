@@ -206,7 +206,7 @@ spec:
                 deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemuarm64"
                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
-                sha256sum models/$(params.release)/model.json > "$(workspaces.output.path)/model.sha256"
+                sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.output.path)/model.sha256"
                 printf '%s\n' "$(params.release)" > "$(workspaces.output.path)/model-release"
       params:
         - name: builder-image
