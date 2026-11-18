@@ -14,6 +14,32 @@ Hummingbird `bootc-os` image instead of Ubuntu — producing images that are
 auto-generated `osrf/docker_images` ROS 2 Dockerfiles, translated apt/Ubuntu →
 dnf/Fedora.
 
+## Global OpenShift safety rules
+
+Treat every OpenShift cluster as shared unless the user explicitly says it is
+dedicated to this work. These rules apply to all OpenShift operations in this
+repository:
+
+- Never modify, delete, restart, scale, or reconfigure an existing resource
+  that was not created by this work.
+- Never install, upgrade, remove, or change cluster-scoped operators,
+  subscriptions, CSVs, HyperConverged/KubeVirt resources, catalog sources,
+  nodes, storage classes, SCCs, RBAC, or other cluster-wide configuration
+  without explicit user approval for that exact change.
+- Before applying anything, use a dedicated namespace and unique names and
+  labels that identify ownership, for example
+  `app.kubernetes.io/part-of: hummingbird-phase5` and
+  `hummingbird.io/owner: opencode-phase5`.
+- Use dedicated PVCs, jobs, services, routes, pipelines, and VMs. Never reuse
+  or mutate an existing shared PVC or workload.
+- Check ownership and use server-side dry-run validation before applying
+  manifests. Do not perform broad cleanup; delete only exact resources known
+  to have been created by this work.
+- If a required cluster capability is absent, stop and report the blocker;
+  do not install or alter cluster-wide infrastructure implicitly.
+- Preserve the local-only publication boundary and do not expose credentials,
+  tokens, or registry passwords in committed manifests.
+
 ## TWO package sources — read this first
 
 1. **tavie/ros2 COPR** (community, unofficial) — the original path. x86_64-only,
