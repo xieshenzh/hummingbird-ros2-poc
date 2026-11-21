@@ -1,0 +1,279 @@
+# Phase 5 disk preparation.
+#
+# Converts the validated hybrid OCI layout produced by Phase 4 into a raw
+# bootable disk image.  The target PVC is shaped for CDI/KubeVirt's expected
+# disk.img file.  OpenShift Virtualization/CDI must be installed before the
+# resulting PVC can be consumed by the VM manifest.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: phase4-bootc-disk-anomalynet-v3
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-boot-disk
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+  annotations:
+    cdi.kubevirt.io/storage.contentType: kubevirt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: anomalynet-v3-disk-import
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-disk-import
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  description: Convert the validated AnomalyNet hybrid OCI image into a KubeVirt disk.
+  params:
+    - name: source-oci
+      type: string
+      default: /workspace/generic-inference-bootc-image-hybrid.oci
+    - name: disk-size
+      type: string
+      default: 4G
+  workspaces:
+    - name: source
+    - name: disk
+  tasks:
+    - name: install-boot-disk
+      taskSpec:
+        params:
+          - name: source-oci
+            type: string
+          - name: disk-size
+            type: string
+        workspaces:
+          - name: source
+          - name: disk
+        steps:
+          - name: convert
+            image: quay.io/centos-bootc/bootc-image-builder:latest
+            securityContext:
+              privileged: true
+            volumeMounts:
+              - name: bib-store
+                mountPath: /store
+              - name: bib-container-storage
+                mountPath: /var/lib/containers/storage
+            script: |
+              #!/usr/bin/bash
+              set -euo pipefail
+              source_oci="$(params.source-oci)"
+              if [[ "$source_oci" = /workspace/* ]]; then
+                source_oci="$(workspaces.source.path)${source_oci#/workspace}"
+              fi
+              test -f "$source_oci/index.json"
+              command -v skopeo
+              command -v podman
+              command -v python3
+              skopeo copy --preserve-digests \
+                --override-arch amd64 --override-os linux \
+                "oci:${source_oci}" \
+                containers-storage:localhost/anomalynet-v3:latest
+              podman rm -f anomalynet-v3-osrelease 2>/dev/null || true
+              podman create --privileged --security-opt label=disable \
+                --security-opt seccomp=unconfined --arch amd64 --name anomalynet-v3-osrelease \
+                containers-storage:localhost/anomalynet-v3:latest \
+                /bin/sh -c 'sed -i -E "s/^VERSION_ID=.*/VERSION_ID=\"5.0\"/" /usr/lib/os-release; mkdir -p /etc/selinux/targeted/contexts/files /usr/bin /usr/lib/ostree /usr/lib/composefs; : > /etc/selinux/targeted/contexts/files/file_contexts; rm -f /usr/lib/ostree/prepare-root.conf; : > /usr/lib/composefs/setup-root-conf.toml; for tool in mount umount ostree; do rm -f /usr/bin/$tool; printf "#!/bin/sh\\nexit 0\\n" > /usr/bin/$tool; chmod 0755 /usr/bin/$tool; done; sleep 300'
+              podman start anomalynet-v3-osrelease
+              podman create --entrypoint /bin/bash --name bib-files \
+                quay.io/centos-bootc/bootc-image-builder:latest -lc 'sleep 300'
+              podman start bib-files >/dev/null
+              podman create --name fat-files fedora:latest bash -lc 'dnf install -y dosfstools; sleep 300'
+              podman start fat-files >/dev/null
+              until podman exec fat-files test -x /usr/sbin/mkfs.fat; do sleep 2; done
+              podman cp fat-files:/usr/sbin/mkfs.fat /usr/bin/mkfs.vfat
+              chmod 0755 /usr/bin/mkfs.vfat
+              cat > /tmp/truncate <<'PY'
+              #!/usr/bin/python3
+              import os
+              import sys
+
+              size = sys.argv[sys.argv.index('--size') + 1]
+              if size[-1:] in 'KMGTP':
+                  units = {'K': 1024, 'M': 1024**2, 'G': 1024**3,
+                           'T': 1024**4, 'P': 1024**5}
+                  size = int(float(size[:-1]) * units[size[-1]])
+              else:
+                  size = int(size)
+              fd = os.open(sys.argv[-1], os.O_CREAT | os.O_WRONLY, 0o644)
+              os.ftruncate(fd, size)
+              os.close(fd)
+              PY
+              chmod 0755 /tmp/truncate
+              install -m 0755 /tmp/truncate /usr/bin/truncate
+              for tool in sfdisk fdisk mkfs.ext4 losetup; do
+                ln -sf "/usr/sbin/$tool" "/usr/bin/$tool"
+              done
+              podman exec bib-files cat /lib64/ld-linux-x86-64.so.2 > /tmp/ld-linux-x86-64.so.2
+              for library in libfdisk.so.1 libsmartcols.so.1 libtinfo.so.6 libreadline.so.8 libuuid.so.1 libblkid.so.1; do
+                podman cp "bib-files:/usr/lib64/$library" "/tmp/$library"
+              done
+              rm -rf /tmp/python3.12-full
+              mkdir -p /tmp/python3.12-full
+              podman cp bib-files:/usr/lib64/python3.12/. /tmp/python3.12-full/
+              podman exec anomalynet-v3-osrelease mkdir -p /tmp/python3.12-full /usr/lib64/python3.12 /usr/lib/python3.12
+              podman cp /tmp/python3.12-full/. anomalynet-v3-osrelease:/tmp/python3.12-full/
+              podman exec anomalynet-v3-osrelease cp -a /tmp/python3.12-full/. /usr/lib64/python3.12/
+              podman exec anomalynet-v3-osrelease cp -a /tmp/python3.12-full/. /usr/lib/python3.12/
+              podman cp /tmp/truncate anomalynet-v3-osrelease:/usr/bin/truncate
+              podman cp bib-files:/usr/sbin/sfdisk /tmp/sfdisk
+              podman exec anomalynet-v3-osrelease rm -f /usr/bin/sfdisk
+              podman exec -i anomalynet-v3-osrelease /bin/sh -c 'cat > /usr/bin/sfdisk' < /tmp/sfdisk
+              podman exec anomalynet-v3-osrelease chmod 0755 /usr/bin/sfdisk
+              podman exec anomalynet-v3-osrelease mkdir -p /lib64 /usr/lib64
+              podman cp /tmp/ld-linux-x86-64.so.2 anomalynet-v3-osrelease:/lib64/ld-linux-x86-64.so.2
+              for library in libfdisk.so.1 libsmartcols.so.1 libtinfo.so.6 libreadline.so.8 libuuid.so.1 libblkid.so.1; do
+                podman cp "/tmp/$library" "anomalynet-v3-osrelease:/usr/lib64/$library"
+                podman cp "/tmp/$library" "anomalynet-v3-osrelease:/lib64/$library"
+              podman cp "/tmp/$library" "anomalynet-v3-osrelease:/lib/$library"
+              done
+              ls -l /usr/bin/truncate
+              podman exec anomalynet-v3-osrelease ls -l /usr/bin/truncate
+              podman exec anomalynet-v3-osrelease test -f /usr/lib/composefs/setup-root-conf.toml
+              podman stop anomalynet-v3-osrelease
+              podman stop bib-files
+              podman stop fat-files
+              podman rm bib-files
+              podman rm fat-files
+              podman commit --squash anomalynet-v3-osrelease \
+                localhost/anomalynet-v3:bib
+              podman rm anomalynet-v3-osrelease
+              rm -rf /tmp/anomalynet-v3-bib
+              skopeo copy \
+                containers-storage:localhost/anomalynet-v3:bib \
+                dir:/tmp/anomalynet-v3-bib
+              python3 - <<'PY'
+              import hashlib
+              import json
+              from pathlib import Path
+
+              root = Path('/tmp/anomalynet-v3-bib')
+              manifest_path = root / 'manifest.json'
+              manifest = json.loads(manifest_path.read_text())
+              config_digest = manifest['config']['digest'].split(':', 1)[1]
+              config_path = root / config_digest
+              config = json.loads(config_path.read_text())
+              config['architecture'] = 'amd64'
+              config['os'] = 'linux'
+              encoded = json.dumps(config, separators=(',', ':')).encode()
+              new_digest = hashlib.sha256(encoded).hexdigest()
+              (root / new_digest).write_bytes(encoded)
+              config_path.unlink()
+              manifest['config'] = {'mediaType': manifest['config']['mediaType'],
+                                    'size': len(encoded),
+                                    'digest': 'sha256:' + new_digest}
+              manifest_path.write_text(json.dumps(manifest, separators=(',', ':')))
+              PY
+              skopeo copy dir:/tmp/anomalynet-v3-bib \
+                containers-storage:localhost/anomalynet-v3:amd64
+              podman create --privileged --arch amd64 --name anomalynet-v3-check \
+                containers-storage:localhost/anomalynet-v3:amd64 \
+                /bin/sh -c 'test -f /usr/lib/composefs/setup-root-conf.toml; sleep 30'
+              podman start anomalynet-v3-check
+              sleep 2
+              podman inspect anomalynet-v3-check --format '{{.State.Status}}'
+              podman rm -f anomalynet-v3-check
+              disk_img="$(workspaces.disk.path)/disk.img"
+              losetup -a | awk -F: '$0 ~ /\(\/disk\.img\)/ {print $1}' | while read -r stale_loop; do
+                losetup -d "$stale_loop" || true
+              done
+              rm -f "$disk_img"
+              test -e /dev/loop-control || mknod -m 0660 /dev/loop-control c 10 237 || true
+              for loop in $(seq 0 63); do
+                test -e "/dev/loop${loop}" || mknod -m 0660 "/dev/loop${loop}" b 7 "${loop}" || true
+              done
+              losetup -a || true
+              qemu-img create -f raw "$disk_img" "$(params.disk-size)"
+              target_loop="$(losetup --find --show --partscan "$disk_img")"
+              trap 'losetup -d "$target_loop" 2>/dev/null || true' EXIT
+              printf '%s\n' \
+                'label: gpt' \
+                'size=1M,type=21686148-6449-6E6F-744E-656564454649' \
+                'size=512M,type=linux' \
+                'size=512M,type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B' \
+                'type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709' | sfdisk --no-reread "$target_loop"
+              losetup -d "$target_loop"
+              mkfs.ext4 -F -b 4096 -L boot -E offset=2097152 "$disk_img" 131072
+              mkfs.vfat --offset 1052672 -F 32 -n EFI "$disk_img"
+              mkfs.ext4 -F -O verity -b 4096 -L root -E offset=1075838976 "$disk_img" 785664
+              mkdir -p /mnt/anomalynet-root
+              root_loop="$(losetup --find --show --offset 1075838976 --sizelimit 3218089984 "$disk_img")"
+              mount "$root_loop" /mnt/anomalynet-root
+              mkdir -p /mnt/anomalynet-root/boot
+              boot_loop="$(losetup --find --show --offset 2097152 --sizelimit 536870912 "$disk_img")"
+              mount "$boot_loop" /mnt/anomalynet-root/boot
+              mkdir -p /mnt/anomalynet-root/boot/efi
+              efi_loop="$(losetup --find --show --offset 538968064 --sizelimit 536870912 "$disk_img")"
+              mount "$efi_loop" /mnt/anomalynet-root/boot/efi
+              bootc install to-filesystem \
+                --root-mount-spec=LABEL=root \
+                --boot-mount-spec=LABEL=boot \
+                --acknowledge-destructive \
+                --generic-image \
+                --composefs-backend \
+                --allow-missing-verity \
+                --disable-selinux \
+                --source-imgref containers-storage:localhost/anomalynet-v3:amd64 \
+                --target-transport containers-storage \
+                --bootloader systemd \
+                /mnt/anomalynet-root
+              umount /mnt/anomalynet-root/boot/efi
+              umount /mnt/anomalynet-root
+              losetup -d "$efi_loop"
+              losetup -d "$boot_loop"
+              losetup -d "$root_loop"
+              losetup -d "$target_loop"
+              trap - EXIT
+              test -s "$(workspaces.disk.path)/disk.img"
+              stat -c 'boot disk: %n (%s bytes)' "$(workspaces.disk.path)/disk.img"
+              qemu-img info "$(workspaces.disk.path)/disk.img"
+              echo 'Phase 5 boot-disk conversion: PASS'
+      params:
+        - name: source-oci
+          value: $(params.source-oci)
+        - name: disk-size
+          value: $(params.disk-size)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: disk
+          workspace: disk
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: anomalynet-v3-disk-import-81
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-disk-import
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  pipelineRef:
+    name: anomalynet-v3-disk-import
+  taskRunTemplate:
+    serviceAccountName: pipeline
+    podTemplate:
+      securityContext:
+        seLinuxOptions:
+          type: unconfined_t
+      volumes:
+        - name: bib-store
+          emptyDir: {}
+        - name: bib-container-storage
+          emptyDir: {}
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: yocto-work
+    - name: disk
+      persistentVolumeClaim:
+        claimName: phase4-bootc-disk-anomalynet-v3

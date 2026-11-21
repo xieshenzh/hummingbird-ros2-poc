@@ -1,0 +1,38 @@
+header:
+  version: 16
+
+machine: qemux86-64
+distro: poky
+target: generic-inference-bootc-image
+
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    branch: scarthgap
+    layers:
+      meta:
+      meta-poky:
+  meta-chunked-bootc:
+    path: meta-chunked-bootc
+
+local_conf_header:
+  bootc-inference: |
+    DL_DIR = "/workspace/cache/downloads"
+    SSTATE_DIR = "/workspace/cache/sstate-cache"
+    INIT_MANAGER = "systemd"
+    INHERIT += "rm_work"
+    DISTRO_FEATURES += "usrmerge"
+    EXTRA_IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+    PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt"
+    INITRAMFS_IMAGE = "initramfs-generic-bootc"
+    IMAGE_CLASSES += "chunked-bootc-oci chunked-bootc-chunkah"
+    IMAGE_FSTYPES += "oci"
+    CHUNKED_BOOTC_HYBRID = "1"
+    CHUNKED_BOOTC_VERSION = "${BOOTC_MODEL_RELEASE}"
+    BOOTC_MODEL_RELEASE = "anomalynet-v3"
+    BOOTC_MODEL_FORMAT = "json-anomalynet"
+    CHUNKED_BOOTC_MAX_LAYERS = "32"
+    CHUNKED_BOOTC_OSTREE_ENCAP = "/usr/bin/ostree-encap"
+    CHUNKED_BOOTC_SKOPEO_STATIC = "/usr/local/libexec/chunked-bootc-skopeo-static"
+    BB_ENV_PASSTHROUGH_ADDITIONS:append = " BOOTC_MODEL_RELEASE"
+    HOSTTOOLS += "buildah chunkah ostree-encap skopeo"

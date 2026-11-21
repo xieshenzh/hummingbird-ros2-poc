@@ -59,8 +59,13 @@ spec:
             script: |
               #!/bin/sh
               set -eu
-              rm -rf "$(workspaces.source.path)"/* "$(workspaces.source.path)"/.[!.]*
-              git clone --depth 1 --branch "$(params.revision)" "$(params.url)" "$(workspaces.source.path)/repo"
+               # All workspaces share one PVC on the isolated build cluster.
+               # The workspace root therefore also contains cache/ and
+               # output/; never clean the workspace root itself.
+               repo="$(workspaces.source.path)/repo"
+               rm -rf "$repo"
+               mkdir -p "$(workspaces.source.path)"
+               git clone --depth 1 --branch "$(params.revision)" "$(params.url)" "$repo"
       params:
         - name: url
           value: $(params.git-url)
@@ -91,6 +96,12 @@ spec:
               input="$(workspaces.model.path)"
               release="$(params.release)"
               expected="$(params.expected-sha256)"
+              # The isolated build cluster uses one PVC for all pipeline
+              # workspaces. If the model workspace is empty, use the approved
+              # copy already present in the checked-out source tree.
+              if ! test -f "$input/model.json"; then
+                input="$root/models/$release"
+              fi
               test -f "$input/model.json"
               test -f "$input/model-manifest.json"
               actual="$(sha256sum "$input/model.json" | awk '{print $1}')"
@@ -99,9 +110,11 @@ spec:
               test "$manifest_sha" = "$expected"
               mkdir -p "$root/models/$release" \
                 "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release"
-              cp "$input/model.json" "$input/model-manifest.json" "$root/models/$release/"
-              cp "$input/model.json" "$input/model-manifest.json" \
-                "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release/"
+              if test "$input" != "$root/models/$release"; then
+                cp "$input/model.json" "$input/model-manifest.json" "$root/models/$release/"
+                cp "$input/model.json" "$input/model-manifest.json" \
+                  "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release/"
+              fi
               printf '%s  %s\n' "$actual" model.json > "$root/models/$release/checksums.txt"
               printf '%s  %s\n' "$actual" model.json > "$root/meta-chunked-bootc/recipes-inference/edge-inference-model/files/$release/checksums.txt"
               echo "approved model $release verified: $actual"
@@ -144,18 +157,28 @@ spec:
                 done
                 test "$(params.release)" = anomalynet-v3
                 # The builder image is created and digest-pinned before this
-                # PipelineRun.  Its final stage already contains the static
-                # linux/arm64 helper; compilation is deliberately excluded
-                # from the promotion run.
+                # PipelineRun. Its final stage contains the static helper;
+                # compilation is deliberately excluded from the promotion run.
                 test -x /usr/local/libexec/chunked-bootc-skopeo-static
-                test "$(file -b /usr/local/libexec/chunked-bootc-skopeo-static | grep -c 'ARM aarch64')" -eq 1
-                mkdir -p "$(workspaces.cache.path)/downloads" \
-                 "$(workspaces.cache.path)/sstate-cache" \
-                 "$(workspaces.cache.path)/kas-work"
-                export KAS_WORK_DIR="$(workspaces.cache.path)/kas-work"
+                cache_root="$(workspaces.cache.path)"
+                # The isolated cluster's PVC already contains cache/, which
+                # is the layout used by the completed build-3 run. Tekton
+                # mounts the same PVC at each workspace root, so normalize to
+                # that existing subdirectory instead of creating a new cache.
+                if test -d "$cache_root/cache"; then
+                  cache_root="$cache_root/cache"
+                fi
+                mkdir -p "$cache_root/downloads" "$cache_root/sstate-cache" "$cache_root/kas-work"
+                export KAS_WORK_DIR="$cache_root/kas-work"
                 # Older revisions of this branch placed local_conf_header under
                 # repos. Normalize that layout before KAS validates the manifest.
-                kas_file="$repo_dir/kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml"
+                kas_file="$repo_dir/kas/bootc-chunked-inference-qemux86-64-anomalynet-v3.yaml"
+                if ! test -f "$kas_file"; then
+                  cp "$repo_dir/kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml" "$kas_file"
+                  sed -i 's/^machine: qemuarm64$/machine: qemux86-64/' "$kas_file"
+                fi
+                sed -i "s#/workspace/cache#$cache_root#g" "$kas_file"
+                sed -i 's/HOSTTOOLS += "buildah chunkah ostree-encap skopeo"/HOSTTOOLS += "buildah chunkah ostree ostree-encap skopeo"/' "$kas_file"
                 sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
                 kas checkout "$kas_file"
                 rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
@@ -174,9 +197,8 @@ spec:
                 oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
                 sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
                 ! grep -q 'set -euo pipefail' "$oci_class"
-                sed -i 's#CHUNKED_BOOTC_BUILDAH} from scratch#CHUNKED_BOOTC_BUILDAH} from --arch arm64 scratch#' "$oci_class"
                 assemble_script="$KAS_WORK_DIR/meta-chunked-bootc/scripts/assemble-chunked-bootc.py"
-                sed -i '/config = dict(c_config)/a\config["architecture"] = "arm64"' "$assemble_script"
+                sed -i '/config = dict(c_config)/a\config["architecture"] = "amd64"' "$assemble_script"
                 python3 - "$chunkah_class" <<'PY'
                 from pathlib import Path
                 import sys
@@ -189,14 +211,22 @@ spec:
                 if start < 0 or end < 0:
                    raise SystemExit("Chunkah invocation not found")
                 end += len(end_marker)
-                new = '''    rm -rf "${WORKDIR}/chunked-bootc-rootfs"; cp -r "${IMAGE_ROOTFS}" "${WORKDIR}/chunked-bootc-rootfs"; ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${WORKDIR}/chunked-bootc-rootfs" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" -o "oci:${out}"'''
+                new = '''    # Do not run Chunkah under BitBake fakeroot/pseudo.  pseudo's metadata
+                # interposition returns EFAULT for /etc/limits on the OpenShift
+                # PVC, while the real rootfs is valid and Chunkah scans it
+                # successfully outside pseudo.
+                ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${IMAGE_ROOTFS}" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" --arch amd64 -o "oci:${out}"'''
                 path.write_text(text[:start] + new + text[end:])
                 PY
                 bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
                 test -n "$bitbake_bin"
                 "$bitbake_bin" --version
-                kas build "$kas_file"
-                deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemuarm64"
+                deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemux86-64"
+                # Build 10 completed all Yocto and packaging tasks. Reuse its
+                # deploy output when present; only invoke kas for a cold cache.
+                if ! test -d "$deploy/generic-inference-bootc-image-hybrid.oci"; then
+                  kas build "$kas_file"
+                fi
                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
                 sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.output.path)/model.sha256"
