@@ -20,13 +20,13 @@ IMAGE_CMD:oci = "chunked_bootc_oci_build"
 do_image_oci[network] = "1"
 
 CHUNKED_BOOTC_BUILDAH ?= "buildah"
-CHUNKED_BOOTC_OCI_ARCH ?= "arm64"
+CHUNKED_BOOTC_OCI_ARCH ?= "${@{'x86_64': 'amd64', 'aarch64': 'arm64'}.get(d.getVar('TARGET_ARCH'), 'amd64')}"
 CHUNKED_BOOTC_OCI_LABELS ?= "ostree.bootable=1 containers.bootc=1"
 # "oci" = OCI layout directory, "oci-archive" = single-file archive
 CHUNKED_BOOTC_OUTPUT_TYPE ?= "oci"
 
 chunked_bootc_oci_build() {
-    set -euo pipefail
+    set -eu
     command -v ${CHUNKED_BOOTC_BUILDAH} >/dev/null 2>&1 \
         || bbfatal "chunked-bootc-oci: ${CHUNKED_BOOTC_BUILDAH} not found in PATH (install buildah on the build host or set CHUNKED_BOOTC_BUILDAH)"
 

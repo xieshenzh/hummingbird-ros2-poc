@@ -42,9 +42,9 @@ CHUNKED_BOOTC_OSTREE_ENCAP ?= "ostree-encap"
 CHUNKED_BOOTC_ASSEMBLE ?= "${CHUNKED_BOOTC_LAYERDIR}/scripts/assemble-chunked-bootc.py"
 
 addtask chunked_bootc_chunk after do_rootfs before do_image
-# chunkah reads the pseudo-owned rootfs and must record root:root in the
-# layer tars — run it under fakeroot
-do_chunked_bootc_chunk[fakeroot] = "1"
+# Chunkah must scan the real rootfs outside pseudo.  pseudo's metadata
+# interposition can return EFAULT for files such as /etc/limits on PVC-backed
+# OpenShift workspaces, even when the rootfs itself is valid.
 do_chunked_bootc_chunk[dirs] = "${IMGDEPLOYDIR}"
 do_chunked_bootc_chunk[vardeps] += "CHUNKED_BOOTC_CHUNKAH CHUNKED_BOOTC_MAX_LAYERS CHUNKED_BOOTC_LABELS"
 do_chunked_bootc_chunk() {
@@ -65,6 +65,7 @@ PY
     ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${IMAGE_ROOTFS}" \
         --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} \
         --config "$cfg" \
+        --arch ${CHUNKED_BOOTC_OCI_ARCH} \
         -o "oci:${out}"
 }
 

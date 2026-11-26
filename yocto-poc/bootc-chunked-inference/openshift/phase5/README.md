@@ -4,6 +4,19 @@ Phase 5 validates a bootable bootc device as an OpenShift Virtualization VM.
 The first milestone is one VM (`edge-device-001`) before introducing fleet
 waves or rollback automation.
 
+## Repository is the source of truth
+
+All build inputs and execution contracts must remain in this repository. The
+OpenShift cluster is disposable execution infrastructure, not the canonical
+location for source code or pipeline logic. In particular, keep the KAS
+configurations, Yocto layer, model manifests/checksums, Tekton Pipeline and
+PipelineRun parameters, and validation scripts checked in here. A cluster may
+contain only a checked-out workspace and generated artifacts.
+
+The Phase 4 pipeline clones this repository at a pinned revision. It must not
+silently patch the cloned layer to correct architecture or shell behavior;
+those fixes belong in the tracked layer and KAS files.
+
 ## Current boundary
 
 The Phase 4 artifact is an OCI layout, not a KubeVirt disk image. It cannot be
@@ -38,7 +51,7 @@ OS image.
 
 1. Install the OpenShift Virtualization operator and apply
    `hyperconverged.yaml`; verify KubeVirt/CDI are available.
-2. Convert the approved ARM64 hybrid OCI artifact into a bootable disk and
+2. Convert the approved architecture-matched hybrid OCI artifact into a bootable disk and
    import it as `phase4-bootc-disk-anomalynet-v3`.
 3. Apply `edge-device-vm.yaml`.
 4. Verify the VM reaches `Running`, then verify bootc status and the two guest

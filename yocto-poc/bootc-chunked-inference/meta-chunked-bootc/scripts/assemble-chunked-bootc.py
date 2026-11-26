@@ -80,7 +80,11 @@ layers = [dict(base_layer)] + [dict(l) for l in c_manifest["layers"]]
 diff_ids = [base_diffid] + list(c_config["rootfs"]["diff_ids"])
 
 config = dict(c_config)
-config["architecture"] = "arm64"
+# Preserve the architecture emitted by chunkah/buildah.  This used to be
+# hard-coded to arm64, which silently produced an ARM image when the qemux86-64
+# build was promoted.  The source image is the authority here because the
+# assembler is shared by both the ARM64 and AMD64 KAS configurations.
+config["architecture"] = c_config.get("architecture", "amd64")
 config["rootfs"]["diff_ids"] = diff_ids
 # layers_with_history() requires one history entry per layer
 config.setdefault("history", []).insert(

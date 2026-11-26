@@ -35,4 +35,4 @@ local_conf_header:
     CHUNKED_BOOTC_OSTREE_ENCAP = "/usr/bin/ostree-encap"
     CHUNKED_BOOTC_SKOPEO_STATIC = "/usr/local/libexec/chunked-bootc-skopeo-static"
     BB_ENV_PASSTHROUGH_ADDITIONS:append = " BOOTC_MODEL_RELEASE"
-    HOSTTOOLS += "buildah chunkah ostree-encap skopeo"
+    HOSTTOOLS += "buildah chunkah ostree ostree-encap skopeo"

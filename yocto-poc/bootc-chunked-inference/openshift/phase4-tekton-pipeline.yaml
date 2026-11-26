@@ -176,49 +176,20 @@ spec:
                 if ! test -f "$kas_file"; then
                   cp "$repo_dir/kas/bootc-chunked-inference-qemuarm64-anomalynet-v3.yaml" "$kas_file"
                   sed -i 's/^machine: qemuarm64$/machine: qemux86-64/' "$kas_file"
-                fi
-                sed -i "s#/workspace/cache#$cache_root#g" "$kas_file"
-                sed -i 's/HOSTTOOLS += "buildah chunkah ostree-encap skopeo"/HOSTTOOLS += "buildah chunkah ostree ostree-encap skopeo"/' "$kas_file"
-                sed -i 's/^  local_conf_header:/local_conf_header:/' "$kas_file"
-                kas checkout "$kas_file"
-                rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
-                cp -a "$repo_dir/meta-chunked-bootc" "$KAS_WORK_DIR/meta-chunked-bootc"
+                 fi
+                 sed -i "s#/workspace/cache#$cache_root#g" "$kas_file"
+                 kas checkout "$kas_file"
+                 rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
+                 cp -a "$repo_dir/meta-chunked-bootc" "$KAS_WORK_DIR/meta-chunked-bootc"
                 cat > /tmp/ostree-encap <<'EOF'
                 #!/bin/sh
                 set -eu
                 test "$#" -eq 3
                 exec /usr/bin/ostree-ext-cli container encapsulate --repo "$1" "$2" "$3"
                 EOF
-                chmod 0755 /tmp/ostree-encap
-                sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
-                chunkah_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-chunkah.bbclass"
-                sed -i 's/set -euo pipefail/set -eu/g' "$chunkah_class"
-                ! grep -q 'set -euo pipefail' "$chunkah_class"
-                oci_class="$KAS_WORK_DIR/meta-chunked-bootc/classes/chunked-bootc-oci.bbclass"
-                sed -i 's/set -euo pipefail/set -eu/g' "$oci_class"
-                ! grep -q 'set -euo pipefail' "$oci_class"
-                assemble_script="$KAS_WORK_DIR/meta-chunked-bootc/scripts/assemble-chunked-bootc.py"
-                sed -i '/config = dict(c_config)/a\config["architecture"] = "amd64"' "$assemble_script"
-                python3 - "$chunkah_class" <<'PY'
-                from pathlib import Path
-                import sys
-                path = Path(sys.argv[1])
-                text = path.read_text()
-                text = text.replace('do_chunked_bootc_chunk[fakeroot] = "1"\n', '')
-                start = text.find('    ${CHUNKED_BOOTC_CHUNKAH} build')
-                end_marker = '-o "oci:${out}"'
-                end = text.find(end_marker, start)
-                if start < 0 or end < 0:
-                   raise SystemExit("Chunkah invocation not found")
-                end += len(end_marker)
-                new = '''    # Do not run Chunkah under BitBake fakeroot/pseudo.  pseudo's metadata
-                # interposition returns EFAULT for /etc/limits on the OpenShift
-                # PVC, while the real rootfs is valid and Chunkah scans it
-                # successfully outside pseudo.
-                ${CHUNKED_BOOTC_CHUNKAH} build --rootfs "${IMAGE_ROOTFS}" --max-layers ${CHUNKED_BOOTC_MAX_LAYERS} --config "$cfg" --arch amd64 -o "oci:${out}"'''
-                path.write_text(text[:start] + new + text[end:])
-                PY
-                bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
+                 chmod 0755 /tmp/ostree-encap
+                 sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
+                 bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
                 test -n "$bitbake_bin"
                 "$bitbake_bin" --version
                 deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemux86-64"
