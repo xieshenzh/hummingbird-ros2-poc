@@ -19,7 +19,7 @@ spec:
         claimName: phase4-yocto-workspace
     - name: model
       persistentVolumeClaim:
-        claimName: anomalynet-v3-release
+        claimName: phase4-yocto-workspace
     - name: cache
       persistentVolumeClaim:
-        claimName: phase4-yocto-cache
+        claimName: phase4-yocto-workspace
