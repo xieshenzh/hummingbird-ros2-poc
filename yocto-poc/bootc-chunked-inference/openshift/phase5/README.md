@@ -40,6 +40,27 @@ itself. This cluster currently has no usable KubeVirt/CDI API for creating the
 VM or importing its disk, so the next safe path is a dedicated Fedora/bootc
 installer VM with the validated OCI artifact and a separate output transfer.
 
+## External-VM Tekton orchestration
+
+`tekton-external-vm-pipelines.yaml` defines the two-job handoff without using
+KubeVirt:
+
+1. `anomalynet-v3-convert-collect-vm` transfers the validated OCI layout to a
+   dedicated Fedora conversion VM over SSH, runs
+   `scripts/fedora-vm-convert-collect.sh`, and copies the generated
+   `disk.img`, kernel, initramfs, checksums, and metadata back into the owned
+   `phase5-anomalynet-v3-artifacts-32830c0` PVC.
+2. `anomalynet-v3-deploy-qemu-vm` transfers that PVC content to the separate
+   deployment VM, runs `scripts/fedora-qemu-deploy-verify.sh`, and performs
+   the guarded target-disk write plus QEMU/serial validation there.
+
+The deployment VM is the Fedora host that launches the QEMU guest; Tekton does
+not SSH into the guest before it boots. The VM must provide the tested
+`serial-console-exec` driver, QEMU, and the host disk utilities. Both jobs use
+the namespace-local `anomalynet-vm-ssh` Secret with `privateKey` and
+`knownHosts`; no credential is checked into the repository. Replace the two
+example hostnames in the PipelineRuns before creating them.
+
 After a host-side raw conversion, run the checked-in deployment repair and
 validation helper while the root partition is mounted, before exporting boot
 assets or starting QEMU:

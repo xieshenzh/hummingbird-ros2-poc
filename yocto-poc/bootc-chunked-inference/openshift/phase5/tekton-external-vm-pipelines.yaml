@@ -1,0 +1,223 @@
+# Tekton orchestration for the two externally provided VM phases.
+#
+# Tekton pods are control/transfer clients only. Native conversion runs on the
+# Fedora conversion VM; deployment and QEMU validation run on the separate
+# deployment VM. The raw image and boot assets are copied back to OpenShift
+# storage between the two PipelineRuns.
+#
+# Required namespace-local Secret, created out-of-band:
+#   anomalynet-vm-ssh: privateKey, knownHosts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: phase5-anomalynet-v3-artifacts-32830c0
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-artifacts
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+    hummingbird.io/revision: 32830c0
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: anomalynet-v3-convert-collect-vm
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-convert-collect-vm
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  params:
+    - name: conversion-host
+      type: string
+    - name: conversion-user
+      type: string
+      default: fedora
+  workspaces:
+    - name: source
+    - name: artifacts
+  tasks:
+    - name: convert-on-fedora
+      taskSpec:
+        params:
+          - name: conversion-host
+            type: string
+          - name: conversion-user
+            type: string
+        workspaces:
+          - name: source
+          - name: artifacts
+        volumes:
+          - name: vm-ssh
+            secret:
+              secretName: anomalynet-vm-ssh
+        steps:
+          - name: transfer-convert-collect
+            image: registry.access.redhat.com/ubi9:9.5
+            volumeMounts:
+              - name: vm-ssh
+                mountPath: /var/run/anomalynet-vm-ssh
+                readOnly: true
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              microdnf install -y openssh-clients tar gzip >/dev/null
+              chmod 600 /var/run/anomalynet-vm-ssh/privateKey
+              install -d -m 700 "$HOME/.ssh"
+              cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
+              key=/var/run/anomalynet-vm-ssh/privateKey
+              host="$(params.conversion-user)@$(params.conversion-host)"
+              remote=/var/tmp/anomalynet/tekton-convert
+              ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
+              tar -C "$(workspaces.source.path)/output" -cf - \
+                generic-inference-bootc-image-hybrid.oci | \
+                ssh -i "$key" "$host" "tar -C '$remote' -xf -"
+              scp -i "$key" \
+                "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-vm-convert-collect.sh" \
+                "$host:$remote/convert.sh"
+              ssh -i "$key" "$host" "chmod 755 '$remote/convert.sh' && '$remote/convert.sh' '$remote/generic-inference-bootc-image-hybrid.oci' '$remote/output'"
+              rm -rf "$(workspaces.artifacts.path)"/*
+              scp -i "$key" -r "$host:$remote/output/." "$(workspaces.artifacts.path)/"
+              test -s "$(workspaces.artifacts.path)/disk.img"
+              sha256sum -c "$(workspaces.artifacts.path)/disk.img.sha256"
+              printf 'artifact_transfer=passed\n' > "$(workspaces.artifacts.path)/TEKTON-METADATA"
+      params:
+        - name: conversion-host
+          value: $(params.conversion-host)
+        - name: conversion-user
+          value: $(params.conversion-user)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: artifacts
+          workspace: artifacts
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: anomalynet-v3-deploy-qemu-vm
+  labels:
+    app.kubernetes.io/name: anomalynet-deploy-qemu-vm
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  params:
+    - name: deployment-host
+      type: string
+    - name: deployment-user
+      type: string
+      default: fedora
+    - name: target-disk
+      type: string
+      default: /dev/nvme1n1
+  workspaces:
+    - name: source
+    - name: artifacts
+  tasks:
+    - name: deploy-and-verify-qemu
+      taskSpec:
+        params:
+          - name: deployment-host
+            type: string
+          - name: deployment-user
+            type: string
+          - name: target-disk
+            type: string
+        workspaces:
+          - name: source
+          - name: artifacts
+        volumes:
+          - name: vm-ssh
+            secret:
+              secretName: anomalynet-vm-ssh
+        steps:
+          - name: transfer-deploy-verify
+            image: registry.access.redhat.com/ubi9:9.5
+            volumeMounts:
+              - name: vm-ssh
+                mountPath: /var/run/anomalynet-vm-ssh
+                readOnly: true
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              microdnf install -y openssh-clients tar gzip >/dev/null
+              chmod 600 /var/run/anomalynet-vm-ssh/privateKey
+              install -d -m 700 "$HOME/.ssh"
+              cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
+              key=/var/run/anomalynet-vm-ssh/privateKey
+              host="$(params.deployment-user)@$(params.deployment-host)"
+              remote=/var/tmp/anomalynet/tekton-deploy
+              ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
+              tar -C "$(workspaces.artifacts.path)" -cf - . | \
+                ssh -i "$key" "$host" "tar -C '$remote' -xf -"
+              scp -i "$key" \
+                "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-qemu-deploy-verify.sh" \
+                "$host:$remote/deploy.sh"
+              ssh -tt -i "$key" "$host" \
+                "chmod 755 '$remote/deploy.sh' && '$remote/deploy.sh' '$remote' '$(params.target-disk)'"
+              echo 'QEMU deployment and guest verification: PASS'
+      params:
+        - name: deployment-host
+          value: $(params.deployment-host)
+        - name: deployment-user
+          value: $(params.deployment-user)
+        - name: target-disk
+          value: $(params.target-disk)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: artifacts
+          workspace: artifacts
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: anomalynet-v3-convert-collect-32830c0
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-convert-collect-vm
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  pipelineRef:
+    name: anomalynet-v3-convert-collect-vm
+  params:
+    - name: conversion-host
+      value: fedora-conversion-vm.example.invalid
+  taskRunTemplate:
+    serviceAccountName: pipeline
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: phase4-yocto-workspace
+    - name: artifacts
+      persistentVolumeClaim:
+        claimName: phase5-anomalynet-v3-artifacts-32830c0
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: anomalynet-v3-deploy-qemu-32830c0
+  labels:
+    app.kubernetes.io/name: anomalynet-deploy-qemu-vm
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  pipelineRef:
+    name: anomalynet-v3-deploy-qemu-vm
+  params:
+    - name: deployment-host
+      value: qemu-deployment-vm.example.invalid
+  taskRunTemplate:
+    serviceAccountName: pipeline
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: phase4-yocto-workspace
+    - name: artifacts
+      persistentVolumeClaim:
+        claimName: phase5-anomalynet-v3-artifacts-32830c0
