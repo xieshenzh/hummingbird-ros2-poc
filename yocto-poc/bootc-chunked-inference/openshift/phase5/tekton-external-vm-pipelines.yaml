@@ -48,7 +48,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              apk add --no-cache openssh-client tar gzip >/dev/null
+              apk add --no-cache bash openssh-client tar gzip >/dev/null
               chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
@@ -127,7 +127,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              apk add --no-cache openssh-client tar gzip >/dev/null
+              apk add --no-cache bash openssh-client tar gzip >/dev/null
               chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
