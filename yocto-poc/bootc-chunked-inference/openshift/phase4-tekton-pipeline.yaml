@@ -85,7 +85,6 @@ spec:
             type: string
         workspaces:
           - name: source
-          - name: model
         steps:
           - name: copy-and-verify
             image: registry.access.redhat.com/ubi9:9.5
@@ -93,7 +92,13 @@ spec:
               #!/usr/bin/bash
               set -euo pipefail
               root="$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference"
-              input="$(workspaces.model.path)"
+              # The cluster uses Tekton coschedule=workspaces. A TaskRun may
+              # mount only one PVC-backed workspace in that mode. The model
+              # input is therefore the model/ subdirectory of the shared
+              # source workspace.
+              # The model workspace previously mounted the same PVC at its
+              # root. Preserve that layout through the single source mount.
+              input="$(workspaces.source.path)"
               release="$(params.release)"
               expected="$(params.expected-sha256)"
               # The isolated build cluster uses one PVC for all pipeline
@@ -126,8 +131,6 @@ spec:
       workspaces:
         - name: source
           workspace: source
-        - name: model
-          workspace: model
 
     - name: yocto-build
       runAfter: [stage-approved-model]
@@ -139,8 +142,6 @@ spec:
             type: string
         workspaces:
           - name: source
-          - name: output
-          - name: cache
         steps:
           - name: build
             image: $(params.builder-image)
@@ -160,7 +161,7 @@ spec:
                 # PipelineRun. Its final stage contains the static helper;
                 # compilation is deliberately excluded from the promotion run.
                 test -x /usr/local/libexec/chunked-bootc-skopeo-static
-                cache_root="$(workspaces.cache.path)"
+                cache_root="$(workspaces.source.path)"
                 # The isolated cluster's PVC already contains cache/, which
                 # is the layout used by the completed build-3 run. Tekton
                 # mounts the same PVC at each workspace root, so normalize to
@@ -194,9 +195,10 @@ spec:
                 rm -rf "$deploy"/generic-inference-bootc-image*.oci
                 kas build "$kas_file"
                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
-                cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
-                sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.output.path)/model.sha256"
-                printf '%s\n' "$(params.release)" > "$(workspaces.output.path)/model-release"
+                mkdir -p "$(workspaces.source.path)/output"
+                cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.source.path)/output/"
+                sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.source.path)/output/model.sha256"
+                printf '%s\n' "$(params.release)" > "$(workspaces.source.path)/output/model-release"
       params:
         - name: builder-image
           value: $(params.yocto-builder-image)
@@ -205,10 +207,6 @@ spec:
       workspaces:
         - name: source
           workspace: source
-        - name: output
-          workspace: output
-        - name: cache
-          workspace: cache
 
     - name: validate-artifact
       runAfter: [yocto-build]
@@ -220,16 +218,16 @@ spec:
             type: string
         workspaces:
           - name: source
-          - name: output
         steps:
           - name: validate
             image: registry.access.redhat.com/ubi9:9.5
             script: |
               #!/usr/bin/bash
               set -euo pipefail
-              test "$(cat $(workspaces.output.path)/model-release)" = "$(params.release)"
-              test "$(awk '{print $1}' $(workspaces.output.path)/model.sha256)" = "$(params.expected-sha256)"
-              test -d "$(workspaces.output.path)/generic-inference-bootc-image-hybrid.oci"
+              output="$(workspaces.source.path)/output"
+              test "$(cat "$output/model-release")" = "$(params.release)"
+              test "$(awk '{print $1}' "$output/model.sha256")" = "$(params.expected-sha256)"
+              test -d "$output/generic-inference-bootc-image-hybrid.oci"
               grep -R -q "$(params.release)" "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/models/$(params.release)/model-manifest.json"
               echo "Phase 4 artifact validation: PASS"
       params:
@@ -240,8 +238,6 @@ spec:
       workspaces:
         - name: source
           workspace: source
-        - name: output
-          workspace: output
 
     - name: publish-oci
       runAfter: [validate-artifact]
@@ -258,7 +254,7 @@ spec:
           - name: password
             type: string
         workspaces:
-          - name: output
+          - name: source
         steps:
           - name: copy
             image: quay.io/skopeo/stable:v1.15
@@ -268,7 +264,7 @@ spec:
               test -n "$(params.username)" && test -n "$(params.password)"
               skopeo copy --dest-tls-verify=false \
                 --dest-creds "$(params.username):$(params.password)" \
-                "oci:$(workspaces.output.path)/generic-inference-bootc-image-hybrid.oci" \
+                "oci:$(workspaces.source.path)/output/generic-inference-bootc-image-hybrid.oci" \
                 "docker://$(params.destination)"
               echo "published $(params.destination)"
       params:
@@ -279,5 +275,5 @@ spec:
         - name: password
           value: $(params.publish-password)
       workspaces:
-        - name: output
-          workspace: output
+        - name: source
+          workspace: source
