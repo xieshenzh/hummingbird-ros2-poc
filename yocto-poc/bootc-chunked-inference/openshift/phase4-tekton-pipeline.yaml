@@ -193,11 +193,14 @@ spec:
                 test -n "$bitbake_bin"
                 "$bitbake_bin" --version
                 deploy="$KAS_WORK_DIR/build/tmp/deploy/images/qemux86-64"
-                # Build 10 completed all Yocto and packaging tasks. Reuse its
-                # deploy output when present; only invoke kas for a cold cache.
-                if ! test -d "$deploy/generic-inference-bootc-image-hybrid.oci"; then
-                  kas build "$kas_file"
-                fi
+                # Always rerun the image assembly when the builder image changes.
+                # The deploy tree can contain an OCI assembled with an older
+                # architecture-specific helper (for example, an ARM64 skopeo
+                # copied into an AMD64 image).  KAS/BitBake still reuses the
+                # downloads and sstate cache, so this does not require a cold
+                # Yocto build while ensuring the current helper is embedded.
+                rm -rf "$deploy"/generic-inference-bootc-image*.oci
+                kas build "$kas_file"
                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.output.path)/"
                 sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.output.path)/model.sha256"
