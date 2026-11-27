@@ -198,6 +198,7 @@ spec:
                  # remain valid in BitBake sstate when only their helper script
                  # changes.  Force both assembly stages after the cached build
                  # so the deploy output always reflects the checked-out source.
+                 cd "$KAS_WORK_DIR/build"
                  "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_chunk -f
                  "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_hybrid -f
                  test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
