@@ -192,9 +192,15 @@ spec:
                 # copied into an AMD64 image).  KAS/BitBake still reuses the
                 # downloads and sstate cache, so this does not require a cold
                 # Yocto build while ensuring the current helper is embedded.
-                rm -rf "$deploy"/generic-inference-bootc-image*.oci
-                kas build "$kas_file"
-                test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
+                 rm -rf "$deploy"/generic-inference-bootc-image*.oci
+                 kas build "$kas_file"
+                 # The chunked OCI tasks are image-side assembly tasks and may
+                 # remain valid in BitBake sstate when only their helper script
+                 # changes.  Force both assembly stages after the cached build
+                 # so the deploy output always reflects the checked-out source.
+                 "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_chunk -f
+                 "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_hybrid -f
+                 test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 mkdir -p "$(workspaces.source.path)/output"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.source.path)/output/"
                 sha256sum "$repo_dir/models/$(params.release)/model.json" > "$(workspaces.source.path)/output/model.sha256"
