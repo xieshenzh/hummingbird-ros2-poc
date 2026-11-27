@@ -201,6 +201,7 @@ spec:
                  cd "$KAS_WORK_DIR/build"
                  "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_chunk -f
                  "$bitbake_bin" generic-inference-bootc-image -c chunked_bootc_hybrid -f
+                 "$bitbake_bin" generic-inference-bootc-image -c image -f
                  test -d "$deploy/generic-inference-bootc-image-hybrid.oci"
                 mkdir -p "$(workspaces.source.path)/output"
                 cp -a "$deploy/generic-inference-bootc-image"*.oci "$(workspaces.source.path)/output/"
