@@ -61,17 +61,15 @@ def add_bootc_probe_file(data):
                 payload = archive.extractfile(member) if member.isfile() else None
                 rebuilt.addfile(member, payload)
 
-            paths = ("usr/lib/ostree/prepare-root.conf", "etc/ostree/prepare-root.conf")
-            if not all(any(member.name.rstrip("/") == path for member in members) for path in paths):
-                for directory in ("usr", "usr/lib", "usr/lib/ostree", "etc", "etc/ostree"):
+            path = "usr/lib/ostree/prepare-root.conf"
+            if not any(member.name.rstrip("/") == path for member in members):
+                for directory in ("usr", "usr/lib", "usr/lib/ostree"):
                     if not any(member.name.rstrip("/") == directory for member in members):
                         rebuilt.addfile(tarfile.TarInfo(directory + "/"))
-                for path in paths:
-                    if not any(member.name.rstrip("/") == path for member in members):
-                        config = tarfile.TarInfo(path)
-                        config.mode = 0o644
-                        config.size = len(PREPARE_ROOT_CONF)
-                        rebuilt.addfile(config, io.BytesIO(PREPARE_ROOT_CONF))
+                config = tarfile.TarInfo(path)
+                config.mode = 0o644
+                config.size = len(PREPARE_ROOT_CONF)
+                rebuilt.addfile(config, io.BytesIO(PREPARE_ROOT_CONF))
         return output.getvalue()
 
 

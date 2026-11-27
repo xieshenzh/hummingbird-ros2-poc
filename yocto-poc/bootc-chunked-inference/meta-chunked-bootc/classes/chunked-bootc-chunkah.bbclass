@@ -112,8 +112,6 @@ enabled = false
 [sysroot]
 readonly = true
 EOF
-        mkdir -p "$tree/etc/ostree"
-        cp "$tree/usr/lib/ostree/prepare-root.conf" "$tree/etc/ostree/prepare-root.conf"
     fi
     ${CHUNKED_BOOTC_OSTREE} init --repo="$repo" --mode=archive
     ${CHUNKED_BOOTC_OSTREE} commit --repo="$repo" --branch=${CHUNKED_BOOTC_BASE_REF} --tree=dir="$tree"
