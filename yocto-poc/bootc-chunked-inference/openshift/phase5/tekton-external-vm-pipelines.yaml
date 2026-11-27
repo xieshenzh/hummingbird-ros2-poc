@@ -57,8 +57,8 @@ spec:
               remote=/var/tmp/anomalynet/tekton-convert
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
               root="$(workspaces.workspace.path)"
-              source="$root/source"
-              artifacts="$root/artifacts"
+              source="$root"
+              artifacts="$root/output/tekton-artifacts-32830c0"
               tar -C "$source/output" -cf - \
                 generic-inference-bootc-image-hybrid.oci | \
                 ssh -i "$key" "$host" "tar -C '$remote' -xf -"
@@ -136,8 +136,8 @@ spec:
               remote=/var/tmp/anomalynet/tekton-deploy
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
               root="$(workspaces.workspace.path)"
-              source="$root/source"
-              artifacts="$root/artifacts"
+              source="$root"
+              artifacts="$root/output/tekton-artifacts-32830c0"
               tar -C "$artifacts" -cf - . | \
                 ssh -i "$key" "$host" "tar -C '$remote' -xf -"
               scp -i "$key" \

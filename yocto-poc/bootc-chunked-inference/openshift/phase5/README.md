@@ -49,8 +49,10 @@ KubeVirt:
    dedicated Fedora conversion VM over SSH, runs
    `scripts/fedora-vm-convert-collect.sh`, and copies the generated
    `disk.img`, kernel, initramfs, checksums, and metadata back into the
-   `artifacts/` directory of the owned Phase 4 workspace PVC.
-2. `anomalynet-v3-deploy-qemu-vm` transfers that `artifacts/` content to the separate
+   `output/tekton-artifacts-32830c0/` directory of the owned Phase 4
+   workspace PVC.
+2. `anomalynet-v3-deploy-qemu-vm` transfers that
+   `output/tekton-artifacts-32830c0/` content to the separate
    deployment VM, runs `scripts/fedora-qemu-deploy-verify.sh`, and performs
    the guarded target-disk write plus QEMU/serial validation there.
 
