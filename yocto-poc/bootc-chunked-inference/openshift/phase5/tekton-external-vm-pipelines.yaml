@@ -40,7 +40,7 @@ spec:
               secretName: anomalynet-vm-ssh
         steps:
           - name: transfer-convert-collect
-            image: registry.access.redhat.com/ubi9:9.5
+            image: alpine:3.20
             volumeMounts:
               - name: vm-ssh
                 mountPath: /var/run/anomalynet-vm-ssh
@@ -48,7 +48,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              microdnf install -y openssh-clients tar gzip >/dev/null
+              apk add --no-cache openssh-client tar gzip >/dev/null
               chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
@@ -119,7 +119,7 @@ spec:
               secretName: anomalynet-vm-ssh
         steps:
           - name: transfer-deploy-verify
-            image: registry.access.redhat.com/ubi9:9.5
+            image: alpine:3.20
             volumeMounts:
               - name: vm-ssh
                 mountPath: /var/run/anomalynet-vm-ssh
@@ -127,7 +127,7 @@ spec:
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
-              microdnf install -y openssh-clients tar gzip >/dev/null
+              apk add --no-cache openssh-client tar gzip >/dev/null
               chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
