@@ -10,7 +10,7 @@ command -v qemu-img >/dev/null
 
 rm -rf "$output_dir"
 mkdir -p "$output_dir/boot-assets"
-image_id=$(sudo podman pull "oci:$oci_dir" | awk '/sha256:/ {print $NF}' | tail -1)
+image_id=$(sudo podman pull --quiet "oci:$oci_dir")
 test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
