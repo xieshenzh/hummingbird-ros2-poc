@@ -105,16 +105,17 @@ base_blob = raw_blob(b_blobs, base_layer["digest"])
 base_uncompressed = base_blob
 if "gzip" in base_layer.get("mediaType", ""):
     base_uncompressed = gzip.decompress(base_blob)
+b_config = load_blob(b_blobs, b_manifest["config"]["digest"])
+original_diffid = "sha256:" + hashlib.sha256(base_uncompressed).hexdigest()
+assert b_config["rootfs"]["diff_ids"] == [original_diffid], "base diffid mismatch"
 base_uncompressed = add_bootc_probe_file(base_uncompressed)
 if "gzip" in base_layer.get("mediaType", ""):
     base_blob = gzip.compress(base_uncompressed, mtime=0)
 else:
     base_blob = base_uncompressed
 base_diffid = "sha256:" + hashlib.sha256(base_uncompressed).hexdigest()
-
-# sanity: the base OCI's config should agree on the diffid
-b_config = load_blob(b_blobs, b_manifest["config"]["digest"])
-assert b_config["rootfs"]["diff_ids"] == [base_diffid], "base diffid mismatch"
+base_digest = "sha256:" + hashlib.sha256(base_blob).hexdigest()
+base_layer = dict(base_layer, digest=base_digest, size=len(base_blob))
 
 # assemble: base layer first, then all chunkah chunks (derived path)
 layers = [dict(base_layer)] + [dict(l) for l in c_manifest["layers"]]
@@ -141,7 +142,6 @@ shutil.copytree(chunked_dir, out_dir, dirs_exist_ok=True)
 out_blobs = out_dir / "blobs" / "sha256"
 
 # copy the base layer blob in
-base_digest = base_layer["digest"]
 (out_blobs / base_digest.split(":", 1)[1]).write_bytes(base_blob)
 
 cd, cs = write_blob(out_blobs, json.dumps(config, separators=(",", ":")).encode())
