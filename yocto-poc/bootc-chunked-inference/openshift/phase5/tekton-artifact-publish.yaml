@@ -18,11 +18,11 @@ spec:
   taskSpec:
     steps:
       - name: publish
-        image: image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/yocto-bootc-builder@sha256:e950c4906d7693db8df25154e449137f15e5985bd8e7da2d69f8969b615fbbe1
+        image: image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/yocto-bootc-builder@sha256:b30bd4df07e03aa4fa783bf04a742425a19adaf312ef18ba9096ef126156dfac
         script: |
           #!/usr/bin/env bash
           set -euo pipefail
-          root=/workspace/build/reassembled-output
+          root=/workspace/build/output
           source_oci="$(find "$root" -maxdepth 1 -type d -name '*.oci' -print -quit)"
           test -n "$source_oci"
           test -f "$source_oci/index.json"
@@ -38,4 +38,4 @@ spec:
   workspaces:
     - name: build
       persistentVolumeClaim:
-        claimName: anomalynet-v3-standalone-workspace-3
+        claimName: phase4-yocto-workspace
