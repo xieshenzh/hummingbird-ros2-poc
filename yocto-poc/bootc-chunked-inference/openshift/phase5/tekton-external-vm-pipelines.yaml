@@ -49,10 +49,11 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               dnf install -y openssh-clients tar gzip >/dev/null
-              chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
-              key=/var/run/anomalynet-vm-ssh/privateKey
+              key=/tmp/anomalynet-vm-private-key
+              cp /var/run/anomalynet-vm-ssh/privateKey "$key"
+              chmod 600 "$key"
               host="$(params.conversion-user)@$(params.conversion-host)"
               remote=/var/tmp/anomalynet/tekton-convert
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
@@ -128,10 +129,11 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               dnf install -y openssh-clients tar gzip >/dev/null
-              chmod 600 /var/run/anomalynet-vm-ssh/privateKey
               install -d -m 700 "$HOME/.ssh"
               cp /var/run/anomalynet-vm-ssh/knownHosts "$HOME/.ssh/known_hosts"
-              key=/var/run/anomalynet-vm-ssh/privateKey
+              key=/tmp/anomalynet-vm-private-key
+              cp /var/run/anomalynet-vm-ssh/privateKey "$key"
+              chmod 600 "$key"
               host="$(params.deployment-user)@$(params.deployment-host)"
               remote=/var/tmp/anomalynet/tekton-deploy
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
