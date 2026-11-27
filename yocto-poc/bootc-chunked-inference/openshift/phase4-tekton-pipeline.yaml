@@ -181,14 +181,6 @@ spec:
                  kas checkout "$kas_file"
                  rm -rf "$KAS_WORK_DIR/meta-chunked-bootc"
                  cp -a "$repo_dir/meta-chunked-bootc" "$KAS_WORK_DIR/meta-chunked-bootc"
-                cat > /tmp/ostree-encap <<'EOF'
-                #!/bin/sh
-                set -eu
-                test "$#" -eq 3
-                exec /usr/bin/ostree-ext-cli container encapsulate --repo "$1" "$2" "$3"
-                EOF
-                 chmod 0755 /tmp/ostree-encap
-                 sed -i 's#/usr/bin/ostree-encap#/tmp/ostree-encap#' "$kas_file"
                  bitbake_bin="$(find "$KAS_WORK_DIR" -path '*/bitbake/bin/bitbake' -type f -print -quit)"
                 test -n "$bitbake_bin"
                 "$bitbake_bin" --version
