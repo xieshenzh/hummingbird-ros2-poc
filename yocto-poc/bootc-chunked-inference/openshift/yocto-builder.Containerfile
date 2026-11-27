@@ -7,6 +7,7 @@ FROM ghcr.io/siemens/kas/kas:5.2-debian-bookworm AS go-tool-builder
 
 USER root
 ARG GO_VERSION=1.25.7
+ARG TARGETARCH=amd64
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/* \
@@ -17,7 +18,7 @@ ENV PATH=/usr/local/go/bin:$PATH
 RUN git clone --depth 1 --branch v1.24.1 \
         https://github.com/containers/skopeo /tmp/skopeo && \
     cd /tmp/skopeo && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
         go build -tags containers_image_openpgp -trimpath \
         -o /usr/local/libexec/chunked-bootc-skopeo-static ./cmd/skopeo
 
