@@ -13,11 +13,11 @@ done
 rm -rf "$output_dir"
 mkdir -p "$output_dir/boot-assets"
 sudo podman pull "oci:$oci_dir" >/dev/null
-manifest_digest=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$oci_dir/index.json" | head -1 | sed 's/.*"sha256:/sha256/' | sed 's/"$//')
+manifest_digest=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$oci_dir/index.json" | head -1 | sed 's/.*"sha256:/sha256:/' | sed 's/"$//')
 test -n "$manifest_digest"
 manifest_blob="$oci_dir/blobs/sha256/${manifest_digest#sha256:}"
 test -f "$manifest_blob"
-image_id=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$manifest_blob" | head -1 | sed 's/.*"sha256:/sha256/' | sed 's/"$//')
+image_id=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$manifest_blob" | head -1 | sed 's/.*"sha256:/sha256:/' | sed 's/"$//')
 test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
