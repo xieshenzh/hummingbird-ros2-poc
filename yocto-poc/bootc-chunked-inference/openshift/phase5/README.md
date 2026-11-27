@@ -40,6 +40,22 @@ itself. This cluster currently has no usable KubeVirt/CDI API for creating the
 VM or importing its disk, so the next safe path is a dedicated Fedora/bootc
 installer VM with the validated OCI artifact and a separate output transfer.
 
+After a host-side raw conversion, run the checked-in deployment repair and
+validation helper while the root partition is mounted, before exporting boot
+assets or starting QEMU:
+
+```bash
+sudo yocto-poc/bootc-chunked-inference/scripts/repair-ostree-deployments.sh \
+  /var/tmp/anomalynet/native-output-4f62798/mnt
+```
+
+The helper addresses a bootc 1.1.x installation quirk: a fresh deployment may
+have no deployment-local `sysroot` entry, or an absolute `sysroot -> /sysroot`
+symlink. The Yocto initramfs needs a real deployment-local directory so
+`ostree-prepare-root` survives `switch_root`. This is a host-side repair of
+the generated disk, not a change to the OCI image and not a substitute for
+the raw-image and QEMU checks below.
+
 OpenShift Virtualization is being activated in the connected cluster, so this
 manifest is a checked-in contract. The operator and
 `phase5/hyperconverged.yaml` have now been applied; the KubeVirt/CDI operands

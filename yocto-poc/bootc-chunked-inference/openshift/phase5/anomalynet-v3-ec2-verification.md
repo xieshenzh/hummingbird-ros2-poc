@@ -58,3 +58,26 @@ cannot execute the conversion. Use a pre-provisioned dedicated installer VM
 or an approved privileged build worker, then copy the resulting raw/QCOW2
 artifact back to the owned workspace. KubeVirt/CDI would be another option,
 but its APIs are not installed on this cluster.
+
+## 2026-11-27 replacement-cluster rebuild
+
+The corrected AMD64 rebuild at commit `4f62798` completed on the replacement
+OpenShift cluster. The hybrid OCI was transferred to the dedicated Fedora 44
+x86_64 installer host and passed architecture inspection, bootc labels, and
+`bootc container lint`.
+
+Native installation completed into a temporary 4 GiB raw file under
+`/var/tmp/anomalynet/native-output-4f62798/`; `/dev/nvme0n1` and
+`/dev/nvme1n1` were not written. `qemu-img`, `sgdisk --verify`, read-only
+ext4 checking, and read-only FAT checking all passed.
+
+Direct-kernel QEMU with `-cpu max` reaches the kernel and mounts the root
+filesystem. The first userspace handoff exposed a bootc 1.1.x deployment
+quirk: the deployment-local `sysroot` entry is absent, so
+`ostree-prepare-root` cannot bind the physical root. A diagnostic copy with
+the standard deployment-local directory added reaches systemd, confirming
+that the kernel, initramfs, filesystem, and OSTree deployment are otherwise
+bootable. The host-side repair is now checked in as
+`scripts/repair-ostree-deployments.sh`; it must run before exporting boot
+assets or starting QEMU. No physical target-disk write is authorized until
+the repaired image completes the serial boot test.
