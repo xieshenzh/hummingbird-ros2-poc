@@ -42,3 +42,19 @@ The safe command shape used for all attempts was rootful Podman with
 unmounted and `/dev/nvme0n1p1` was `/` before invoking bootc. The blocker is
 therefore recorded as an EC2 host capability limitation, not an OCI build or
 architecture failure.
+
+## OpenShift raw-image attempt
+
+The validated OCI layout was published from the Phase 4 workspace to the owned
+namespace registry successfully. A direct `bootc-image-builder` TaskRun was
+then submitted, intentionally avoiding the earlier nested-Podman and manual
+loop-device approach. It did not start: OpenShift rejected the pod because
+the `pipeline` service account is not permitted to use a privileged SCC, and
+the requested supplemental group was also outside the namespace's allowed
+range. No SCC or cluster-scoped security configuration was changed.
+
+This means Tekton can still orchestrate the workflow, but the current cluster
+cannot execute the conversion. Use a pre-provisioned dedicated installer VM
+or an approved privileged build worker, then copy the resulting raw/QCOW2
+artifact back to the owned workspace. KubeVirt/CDI would be another option,
+but its APIs are not installed on this cluster.

@@ -1,0 +1,41 @@
+# Publish the validated OCI layout from the Phase 4 workspace to the owned
+# namespace registry. The disk-import Pipeline consumes a registry reference
+# because bootc-image-builder's container storage cannot directly mount the
+# completed Phase 4 workspace as an OCI source.
+apiVersion: tekton.dev/v1
+kind: TaskRun
+metadata:
+  name: anomalynet-v3-publish-hybrid-amd64
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-artifact-publish
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  serviceAccountName: pipeline
+  podTemplate:
+    securityContext:
+      fsGroup: 1001
+  taskSpec:
+    steps:
+      - name: publish
+        image: image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/yocto-bootc-builder@sha256:e950c4906d7693db8df25154e449137f15e5985bd8e7da2d69f8969b615fbbe1
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          root=/workspace/build/reassembled-output
+          source_oci="$(find "$root" -maxdepth 1 -type d -name '*.oci' -print -quit)"
+          test -n "$source_oci"
+          test -f "$source_oci/index.json"
+          token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          destination="docker://image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/anomalynet-v3:hybrid-amd64"
+          skopeo copy --src-tls-verify=false --dest-tls-verify=false \
+            --dest-creds "pipeline:${token}" --preserve-digests \
+            "oci:${source_oci}" "$destination"
+          skopeo inspect --tls-verify=false --creds "pipeline:${token}" "$destination"
+          echo 'Phase 5 OCI publication: PASS'
+    workspaces:
+      - name: build
+  workspaces:
+    - name: build
+      persistentVolumeClaim:
+        claimName: anomalynet-v3-standalone-workspace-3

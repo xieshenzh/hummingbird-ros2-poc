@@ -33,25 +33,23 @@ metadata:
 spec:
   description: Convert the validated AnomalyNet hybrid OCI image into a KubeVirt disk.
   params:
-    - name: source-oci
+    - name: source-image
       type: string
-      default: /workspace/generic-inference-bootc-image-hybrid.oci
+      default: image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-build/anomalynet-v3:source
     - name: disk-size
       type: string
       default: 4G
   workspaces:
-    - name: source
     - name: disk
   tasks:
     - name: install-boot-disk
       taskSpec:
         params:
-          - name: source-oci
+          - name: source-image
             type: string
           - name: disk-size
             type: string
         workspaces:
-          - name: source
           - name: disk
         steps:
           - name: convert
@@ -66,23 +64,23 @@ spec:
             script: |
               #!/usr/bin/bash
               set -euo pipefail
-              source_oci="$(params.source-oci)"
-              if [[ "$source_oci" = /workspace/* ]]; then
-                source_oci="$(workspaces.source.path)${source_oci#/workspace}"
-              fi
-              test -f "$source_oci/index.json"
+              source_image="$(params.source-image)"
+              test -n "$source_image"
               command -v skopeo
               command -v podman
               command -v python3
-              skopeo copy --preserve-digests \
+              registry_token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              skopeo copy --src-tls-verify=false \
+                --src-creds "pipeline:${registry_token}" \
+                --preserve-digests \
                 --override-arch amd64 --override-os linux \
-                "oci:${source_oci}" \
+                "docker://${source_image}" \
                 containers-storage:localhost/anomalynet-v3:latest
               podman rm -f anomalynet-v3-osrelease 2>/dev/null || true
               podman create --privileged --security-opt label=disable \
                 --security-opt seccomp=unconfined --arch amd64 --name anomalynet-v3-osrelease \
                 containers-storage:localhost/anomalynet-v3:latest \
-                /bin/sh -c 'sed -i -E "s/^VERSION_ID=.*/VERSION_ID=\"5.0\"/" /usr/lib/os-release; mkdir -p /etc/selinux/targeted/contexts/files /usr/bin /usr/lib/ostree /usr/lib/composefs; : > /etc/selinux/targeted/contexts/files/file_contexts; rm -f /usr/lib/ostree/prepare-root.conf; : > /usr/lib/composefs/setup-root-conf.toml; for tool in mount umount ostree; do rm -f /usr/bin/$tool; printf "#!/bin/sh\\nexit 0\\n" > /usr/bin/$tool; chmod 0755 /usr/bin/$tool; done; sleep 300'
+                /bin/sh -c 'sed -i -E "s/^VERSION_ID=.*/VERSION_ID=\"5.0\"/" /usr/lib/os-release; mkdir -p /etc/selinux/targeted/contexts/files /usr/bin /usr/lib/ostree; : > /etc/selinux/targeted/contexts/files/file_contexts; printf "%s\\n" "[composefs]" "enabled = yes" "[sysroot]" "readonly = true" > /usr/lib/ostree/prepare-root.conf; for tool in mount umount ostree; do rm -f /usr/bin/$tool; printf "#!/bin/sh\\nexit 0\\n" > /usr/bin/$tool; chmod 0755 /usr/bin/$tool; done; sleep 300'
               podman start anomalynet-v3-osrelease
               podman create --entrypoint /bin/bash --name bib-files \
                 quay.io/centos-bootc/bootc-image-builder:latest -lc 'sleep 300'
@@ -138,14 +136,20 @@ spec:
               done
               ls -l /usr/bin/truncate
               podman exec anomalynet-v3-osrelease ls -l /usr/bin/truncate
-              podman exec anomalynet-v3-osrelease test -f /usr/lib/composefs/setup-root-conf.toml
               podman stop anomalynet-v3-osrelease
               podman stop bib-files
               podman stop fat-files
               podman rm bib-files
               podman rm fat-files
-              podman commit --squash anomalynet-v3-osrelease \
+              podman commit anomalynet-v3-osrelease \
                 localhost/anomalynet-v3:bib
+              podman create --name anomalynet-v3-check \
+                containers-storage:localhost/anomalynet-v3:bib \
+                /bin/sh -c 'test -s /usr/lib/ostree/prepare-root.conf; cat /usr/lib/ostree/prepare-root.conf; sleep 30'
+              podman start anomalynet-v3-check
+              sleep 2
+              podman logs anomalynet-v3-check
+              podman rm -f anomalynet-v3-check
               podman rm anomalynet-v3-osrelease
               rm -rf /tmp/anomalynet-v3-bib
               skopeo copy \
@@ -175,13 +179,6 @@ spec:
               PY
               skopeo copy dir:/tmp/anomalynet-v3-bib \
                 containers-storage:localhost/anomalynet-v3:amd64
-              podman create --privileged --arch amd64 --name anomalynet-v3-check \
-                containers-storage:localhost/anomalynet-v3:amd64 \
-                /bin/sh -c 'test -f /usr/lib/composefs/setup-root-conf.toml; sleep 30'
-              podman start anomalynet-v3-check
-              sleep 2
-              podman inspect anomalynet-v3-check --format '{{.State.Status}}'
-              podman rm -f anomalynet-v3-check
               disk_img="$(workspaces.disk.path)/disk.img"
               losetup -a | awk -F: '$0 ~ /\(\/disk\.img\)/ {print $1}' | while read -r stale_loop; do
                 losetup -d "$stale_loop" || true
@@ -219,8 +216,6 @@ spec:
                 --boot-mount-spec=LABEL=boot \
                 --acknowledge-destructive \
                 --generic-image \
-                --composefs-backend \
-                --allow-missing-verity \
                 --disable-selinux \
                 --source-imgref containers-storage:localhost/anomalynet-v3:amd64 \
                 --target-transport containers-storage \
@@ -238,13 +233,11 @@ spec:
               qemu-img info "$(workspaces.disk.path)/disk.img"
               echo 'Phase 5 boot-disk conversion: PASS'
       params:
-        - name: source-oci
-          value: $(params.source-oci)
+        - name: source-image
+          value: $(params.source-image)
         - name: disk-size
           value: $(params.disk-size)
       workspaces:
-        - name: source
-          workspace: source
         - name: disk
           workspace: disk
 ---
@@ -259,21 +252,20 @@ metadata:
 spec:
   pipelineRef:
     name: anomalynet-v3-disk-import
+  params:
+    - name: source-image
+      value: image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/anomalynet-v3:hybrid-amd64
+    - name: disk-size
+      value: 4G
   taskRunTemplate:
     serviceAccountName: pipeline
     podTemplate:
-      securityContext:
-        seLinuxOptions:
-          type: unconfined_t
       volumes:
         - name: bib-store
           emptyDir: {}
         - name: bib-container-storage
           emptyDir: {}
   workspaces:
-    - name: source
-      persistentVolumeClaim:
-        claimName: yocto-work
     - name: disk
       persistentVolumeClaim:
         claimName: phase4-bootc-disk-anomalynet-v3

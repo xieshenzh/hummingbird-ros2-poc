@@ -24,7 +24,21 @@ placed directly in `containerDisk`. Before applying `edge-device-vm.yaml`, the
 approved hybrid OCI artifact must be installed into a raw or qcow2 disk and
 imported into a CDI PVC named `phase4-bootc-disk-anomalynet-v3` (or the VM
 manifest must be changed to the actual PVC). This conversion is a separate
-image-preparation step; it is not a Tekton promotion task.
+ image-preparation step; it is not a Tekton promotion task.
+
+The first direct Tekton conversion attempt is recorded in
+`tekton-direct-image-builder.yaml`. The OCI publication step succeeded, but
+the raw-image TaskRun was rejected at pod admission because the `pipeline`
+service account is not allowed to use a privileged SCC (and its requested
+`fsGroup: 1001` is not allowed). Do not modify a shared SCC to bypass this
+boundary. The checked-in conversion contract therefore requires either an
+approved, dedicated privileged worker or an external installer VM.
+
+Tekton can orchestrate an installer VM by invoking a pre-provisioned VM over a
+controlled worker/SSH or an approved cloud API. It cannot provide that VM by
+itself. This cluster currently has no usable KubeVirt/CDI API for creating the
+VM or importing its disk, so the next safe path is a dedicated Fedora/bootc
+installer VM with the validated OCI artifact and a separate output transfer.
 
 OpenShift Virtualization is being activated in the connected cluster, so this
 manifest is a checked-in contract. The operator and

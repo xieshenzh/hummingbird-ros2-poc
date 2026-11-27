@@ -1,0 +1,65 @@
+# Direct Phase 5 conversion path.
+#
+# This deliberately does not run bootc install to-filesystem, create loop
+# devices manually, or start Podman inside Podman. bootc-image-builder is the
+# conversion process and writes its raw output directly to the disk workspace.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: phase4-bootc-disk-anomalynet-v3
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-boot-disk
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+  annotations:
+    cdi.kubevirt.io/storage.contentType: kubevirt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: tekton.dev/v1
+kind: TaskRun
+metadata:
+  name: anomalynet-v3-direct-raw-image
+  labels:
+    app.kubernetes.io/name: anomalynet-v3-direct-raw-image
+    app.kubernetes.io/part-of: anomalynet-phase5
+    hummingbird.io/owner: opencode
+spec:
+  serviceAccountName: pipeline
+  podTemplate:
+    securityContext:
+      fsGroup: 1001
+  taskSpec:
+    steps:
+      - name: build-raw-image
+        image: quay.io/centos-bootc/bootc-image-builder:latest
+        securityContext:
+          privileged: true
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          image="image-registry.openshift-image-registry.svc:5000/xieshen-anomalynet-rebuild/anomalynet-v3:hybrid-amd64"
+          auth_dir=/run/containers/1001
+          mkdir -p "$auth_dir"
+          auth="$(printf 'pipeline:%s' "$token" | base64 | tr -d '\n')"
+          cat > "$auth_dir/auth.json" <<EOF
+          {"auths":{"image-registry.openshift-image-registry.svc:5000":{"auth":"$auth"}}}
+          EOF
+          export REGISTRY_AUTH_FILE="$auth_dir/auth.json"
+          podman pull --tls-verify=false "$image"
+          rm -rf /workspace/disk/output
+          mkdir -p /workspace/disk/output
+          bootc-image-builder --type raw --rootfs ext4 \
+            --output /workspace/disk/output "$image"
+          artifact="$(find /workspace/disk/output -type f \( -name '*.raw' -o -name '*.img' -o -name '*.qcow2' \) -print -quit)"
+          test -n "$artifact"
+          qemu-img info "$artifact"
+          file "$artifact"
+          stat -c 'raw disk: %n (%s bytes)' "$artifact"
+          echo 'Phase 5 direct bootc-image-builder conversion: PASS'
