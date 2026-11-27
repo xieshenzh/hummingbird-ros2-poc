@@ -36,8 +36,8 @@ cleanup_loop() {
 trap cleanup_loop EXIT
 sudo mkfs.vfat -n ESP "${loop}p2" >/dev/null
 sudo mkfs.ext4 -q -L root "${loop}p3"
-mkdir -p "$output_dir/mnt/boot/efi"
 sudo mount "${loop}p3" "$output_dir/mnt"
+sudo mkdir -p "$output_dir/mnt/boot/efi"
 sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
 
 # Use the native bootc installer path proven on the Fedora conversion VM. The
