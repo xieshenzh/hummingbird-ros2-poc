@@ -81,3 +81,10 @@ bootable. The host-side repair is now checked in as
 `scripts/repair-ostree-deployments.sh`; it must run before exporting boot
 assets or starting QEMU. No physical target-disk write is authorized until
 the repaired image completes the serial boot test.
+
+The follow-up test used a copy of the original raw file, ran the checked-in
+helper, and validated the resulting real `sysroot` directory. With QEMU
+`-cpu max`, the repaired copy completed the OSTree handoff, started systemd,
+and reached the serial `qemux86-64 login:` prompt. The original raw file was
+not modified by this test; the remaining firmware-mode bootloader limitation
+and the physical-disk write gate are unchanged.
