@@ -20,6 +20,7 @@ sudo podman tag "$image_id" "$image_ref"
 
 disk_size=${3:-4G}
 truncate -s "$disk_size" "$output_dir/disk.img"
+mkdir -p "$output_dir/mnt"
 sfdisk "$output_dir/disk.img" <<'EOF'
 label: gpt
 start=2048,size=2048,type=21686148-6449-6E6F-744E-656564454649,name=bios
