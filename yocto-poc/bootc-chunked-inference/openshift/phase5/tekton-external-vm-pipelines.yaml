@@ -55,7 +55,7 @@ spec:
               cp /var/run/anomalynet-vm-ssh/privateKey "$key"
               chmod 600 "$key"
               host="$(params.conversion-user)@$(params.conversion-host)"
-              remote=/var/tmp/anomalynet/tekton-convert
+              remote="/home/$(params.conversion-user)/anomalynet-tekton-convert"
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
               root="$(workspaces.workspace.path)"
               source="$root"
@@ -135,7 +135,7 @@ spec:
               cp /var/run/anomalynet-vm-ssh/privateKey "$key"
               chmod 600 "$key"
               host="$(params.deployment-user)@$(params.deployment-host)"
-              remote=/var/tmp/anomalynet/tekton-deploy
+              remote="/home/$(params.deployment-user)/anomalynet-tekton-deploy"
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
               root="$(workspaces.workspace.path)"
               source="$root"
