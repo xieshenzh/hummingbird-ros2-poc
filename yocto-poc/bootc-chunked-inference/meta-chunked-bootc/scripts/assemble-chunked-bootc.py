@@ -21,9 +21,12 @@ Usage: assemble-chunked-bootc.py <chunked-oci-dir> <chunked-tag> <base-oci-dir> 
   <base-oci-dir>: OCI containing the empty-commit encapsulated layer
 """
 import hashlib
+import io
 import json
 import shutil
 import sys
+import tarfile
+import gzip
 from pathlib import Path
 
 
@@ -39,6 +42,38 @@ def write_blob(blobs, data):
     digest = "sha256:" + hashlib.sha256(data).hexdigest()
     (blobs / digest.split(":", 1)[1]).write_bytes(data)
     return digest, len(data)
+
+
+def add_bootc_probe_file(data):
+    """Keep bootc's pre-install probe independent of derived layers.
+
+    bootc checks the encapsulated layer before it imports the later plain-tar
+    layers.  ostree-encap stores the commit in ``sysroot/ostree/repo`` but does
+    not expose the commit's files as top-level tar members, so the probe file
+    must also be present directly in this layer.
+    """
+    source = io.BytesIO(data)
+    with tarfile.open(fileobj=source, mode="r:") as archive:
+        members = archive.getmembers()
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode="w") as rebuilt:
+            for member in members:
+                payload = archive.extractfile(member) if member.isfile() else None
+                rebuilt.addfile(member, payload)
+
+            path = "usr/lib/ostree/prepare-root.conf"
+            if not any(member.name.rstrip("/") == path for member in members):
+                for directory in ("usr", "usr/lib", "usr/lib/ostree"):
+                    if not any(member.name.rstrip("/") == directory for member in members):
+                        rebuilt.addfile(tarfile.TarInfo(directory + "/"))
+                config = tarfile.TarInfo(path)
+                config.mode = 0o644
+                config.size = len(PREPARE_ROOT_CONF)
+                rebuilt.addfile(config, io.BytesIO(PREPARE_ROOT_CONF))
+        return output.getvalue()
+
+
+PREPARE_ROOT_CONF = b"""[composefs]\nenabled = false\n[sysroot]\nreadonly = true\n"""
 
 
 def manifest_of(oci, tag_suffix):
@@ -67,8 +102,12 @@ base_layer = b_manifest["layers"][0]
 base_blob = raw_blob(b_blobs, base_layer["digest"])
 base_uncompressed = base_blob
 if "gzip" in base_layer.get("mediaType", ""):
-    import gzip
     base_uncompressed = gzip.decompress(base_blob)
+base_uncompressed = add_bootc_probe_file(base_uncompressed)
+if "gzip" in base_layer.get("mediaType", ""):
+    base_blob = gzip.compress(base_uncompressed, mtime=0)
+else:
+    base_blob = base_uncompressed
 base_diffid = "sha256:" + hashlib.sha256(base_uncompressed).hexdigest()
 
 # sanity: the base OCI's config should agree on the diffid
