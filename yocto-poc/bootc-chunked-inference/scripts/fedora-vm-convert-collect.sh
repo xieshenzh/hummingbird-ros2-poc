@@ -50,7 +50,7 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
   -v "$output_dir/mnt":/target \
-  "$image_ref" bootc install to-filesystem /target \
+  --entrypoint bootc "$image_ref" install to-filesystem /target \
   --target-imgref "$image_ref" --disable-selinux
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
