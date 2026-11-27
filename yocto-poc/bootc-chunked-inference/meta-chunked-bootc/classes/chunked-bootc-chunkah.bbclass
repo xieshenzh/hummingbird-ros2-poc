@@ -33,6 +33,10 @@ CHUNKED_BOOTC_HYBRID ?= "0"
 CHUNKED_BOOTC_LABELS ?= "ostree.bootable=1 containers.bootc=1"
 CHUNKED_BOOTC_BASE_SYMLINKS ?= "bin:usr/bin sbin:usr/sbin lib:usr/lib lib64:usr/lib64 opt:usr/opt root:var/root home:var/home srv:var/srv ostree:sysroot/ostree"
 CHUNKED_BOOTC_BASE_MOUNTPOINTS ?= "dev proc sys boot run tmp"
+# Files required by bootc before derived layers are applied belong in the
+# encapsulated base commit. Keeping prepare-root.conf only in a chunkah
+# derived layer makes native bootc installation reject the image.
+CHUNKED_BOOTC_BASE_PREPARE_ROOT ?= "1"
 CHUNKED_BOOTC_BASE_REF ?= "chunked-bootc/base"
 CHUNKED_BOOTC_OSTREE ?= "ostree"
 CHUNKED_BOOTC_OSTREE_ENCAP ?= "ostree-encap"
@@ -74,7 +78,7 @@ PY
 # it is a separate, non-fakeroot task.
 addtask chunked_bootc_hybrid after do_chunked_bootc_chunk before do_image
 do_chunked_bootc_hybrid[dirs] = "${IMGDEPLOYDIR}"
-do_chunked_bootc_hybrid[vardeps] += "CHUNKED_BOOTC_HYBRID CHUNKED_BOOTC_BASE_REF CHUNKED_BOOTC_BASE_SYMLINKS CHUNKED_BOOTC_BASE_MOUNTPOINTS CHUNKED_BOOTC_OSTREE CHUNKED_BOOTC_OSTREE_ENCAP CHUNKED_BOOTC_ASSEMBLE"
+do_chunked_bootc_hybrid[vardeps] += "CHUNKED_BOOTC_HYBRID CHUNKED_BOOTC_BASE_REF CHUNKED_BOOTC_BASE_SYMLINKS CHUNKED_BOOTC_BASE_MOUNTPOINTS CHUNKED_BOOTC_BASE_PREPARE_ROOT CHUNKED_BOOTC_OSTREE CHUNKED_BOOTC_OSTREE_ENCAP CHUNKED_BOOTC_ASSEMBLE"
 do_chunked_bootc_hybrid() {
     set -eu
     [ "${CHUNKED_BOOTC_HYBRID}" = "1" ] || return 0
@@ -100,6 +104,15 @@ do_chunked_bootc_hybrid() {
         mkdir -p "$tree/$d"
         touch "$tree/$d/.chunked-bootc-keep"
     done
+    if [ "${CHUNKED_BOOTC_BASE_PREPARE_ROOT}" = "1" ]; then
+        mkdir -p "$tree/usr/lib/ostree"
+        cat > "$tree/usr/lib/ostree/prepare-root.conf" <<'EOF'
+[composefs]
+enabled = false
+[sysroot]
+readonly = true
+EOF
+    fi
     ${CHUNKED_BOOTC_OSTREE} init --repo="$repo" --mode=archive
     ${CHUNKED_BOOTC_OSTREE} commit --repo="$repo" --branch=${CHUNKED_BOOTC_BASE_REF} --tree=dir="$tree"
     ${CHUNKED_BOOTC_OSTREE_ENCAP} "$repo" ${CHUNKED_BOOTC_BASE_REF} "oci:${base}:base"

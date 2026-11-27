@@ -19,6 +19,7 @@
 #   CHUNKED_BOOTC_TITLE           BLS entry title
 #   CHUNKED_BOOTC_KARGS      kernel args in the BLS entry
 #   CHUNKED_BOOTC_LSINITRD_SHIM install the bootc-image-builder shim (default 1)
+#   CHUNKED_BOOTC_VERSION_ID     bootc-compatible VERSION_ID (default 5.0)
 #
 # Kernel image and initramfs are discovered from the deploy dir: the
 # machine's KERNEL_IMAGETYPE for the kernel, and ${INITRAMFS_IMAGE}
@@ -29,12 +30,16 @@ ROOTFS_POSTPROCESS_COMMAND += "chunked_bootc_layout; chunked_bootc_usr_layout; c
 # These values change the generated rootfs and must invalidate do_rootfs. This
 # is important for version-only upgrade images: serving the previous rootfs
 # from sstate would make the upgrade test vacuous.
-do_rootfs[vardeps] += "CHUNKED_BOOTC_VERSION CHUNKED_BOOTC_VERSION_FILE CHUNKED_BOOTC_TITLE CHUNKED_BOOTC_KARGS CHUNKED_BOOTC_CONTAINER_CFG CHUNKED_BOOTC_INSECURE_REGISTRIES CHUNKED_BOOTC_SKOPEO_STATIC"
+do_rootfs[vardeps] += "CHUNKED_BOOTC_VERSION CHUNKED_BOOTC_VERSION_FILE CHUNKED_BOOTC_VERSION_ID CHUNKED_BOOTC_TITLE CHUNKED_BOOTC_KARGS CHUNKED_BOOTC_CONTAINER_CFG CHUNKED_BOOTC_INSECURE_REGISTRIES CHUNKED_BOOTC_SKOPEO_STATIC"
 
 CHUNKED_BOOTC_TITLE ?= "Generic bootc"
 CHUNKED_BOOTC_KARGS ?= "root=/dev/vda rw"
 CHUNKED_BOOTC_LSINITRD_SHIM ?= "1"
 CHUNKED_BOOTC_VERSION_FILE ?= "chunked-bootc-version"
+# bootc parses VERSION_ID as a distro release identifier, not as the full
+# Poky release string (5.0.21 has too many version components for bootc's
+# image manifest generator). Keep the detailed release in VERSION/PRETTY_NAME.
+CHUNKED_BOOTC_VERSION_ID ?= "5.0"
 # container-runtime config baked into the image (bootc overlays
 # /etc/containers at install time; the guest needs permissive policy +
 # the build/test registries preconfigured to pull updates)
@@ -52,6 +57,14 @@ chunked_bootc_version_stamp() {
 }
 
 chunked_bootc_layout() {
+    # Normalize the generated os-release before any OCI assembly. This is an
+    # image contract, not a conversion-time workaround: bootc-image-builder
+    # and bootc install both consume VERSION_ID from the source image.
+    if [ -f "${IMAGE_ROOTFS}/usr/lib/os-release" ]; then
+        sed -i -E "s/^VERSION_ID=.*/VERSION_ID=\"${CHUNKED_BOOTC_VERSION_ID}\"/" \
+            "${IMAGE_ROOTFS}/usr/lib/os-release"
+    fi
+
     local kv="$(ls ${IMAGE_ROOTFS}/usr/lib/modules 2>/dev/null | grep -E '^[0-9]' | head -1)"
     [ -n "${kv}" ] || bbfatal "chunked_bootc_layout: no kernel version dir in rootfs"
 
