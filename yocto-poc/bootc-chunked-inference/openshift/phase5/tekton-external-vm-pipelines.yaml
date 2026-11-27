@@ -7,22 +7,6 @@
 #
 # Required namespace-local Secret, created out-of-band:
 #   anomalynet-vm-ssh: privateKey, knownHosts
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: phase5-anomalynet-v3-artifacts-32830c0
-  labels:
-    app.kubernetes.io/name: anomalynet-v3-artifacts
-    app.kubernetes.io/part-of: anomalynet-phase5
-    hummingbird.io/owner: opencode
-    hummingbird.io/revision: 32830c0
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: gp3-csi
-  resources:
-    requests:
-      storage: 8Gi
----
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -39,8 +23,7 @@ spec:
       type: string
       default: fedora
   workspaces:
-    - name: source
-    - name: artifacts
+    - name: workspace
   tasks:
     - name: convert-on-fedora
       taskSpec:
@@ -50,8 +33,7 @@ spec:
           - name: conversion-user
             type: string
         workspaces:
-          - name: source
-          - name: artifacts
+          - name: workspace
         volumes:
           - name: vm-ssh
             secret:
@@ -74,28 +56,30 @@ spec:
               host="$(params.conversion-user)@$(params.conversion-host)"
               remote=/var/tmp/anomalynet/tekton-convert
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
-              tar -C "$(workspaces.source.path)/output" -cf - \
+              root="$(workspaces.workspace.path)"
+              source="$root/source"
+              artifacts="$root/artifacts"
+              tar -C "$source/output" -cf - \
                 generic-inference-bootc-image-hybrid.oci | \
                 ssh -i "$key" "$host" "tar -C '$remote' -xf -"
               scp -i "$key" \
-                "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-vm-convert-collect.sh" \
+                "$source/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-vm-convert-collect.sh" \
                 "$host:$remote/convert.sh"
               ssh -i "$key" "$host" "chmod 755 '$remote/convert.sh' && '$remote/convert.sh' '$remote/generic-inference-bootc-image-hybrid.oci' '$remote/output'"
-              rm -rf "$(workspaces.artifacts.path)"/*
-              scp -i "$key" -r "$host:$remote/output/." "$(workspaces.artifacts.path)/"
-              test -s "$(workspaces.artifacts.path)/disk.img"
-              sha256sum -c "$(workspaces.artifacts.path)/disk.img.sha256"
-              printf 'artifact_transfer=passed\n' > "$(workspaces.artifacts.path)/TEKTON-METADATA"
+              rm -rf "$artifacts"
+              mkdir -p "$artifacts"
+              scp -i "$key" -r "$host:$remote/output/." "$artifacts/"
+              test -s "$artifacts/disk.img"
+              (cd "$artifacts" && sha256sum -c disk.img.sha256)
+              printf 'artifact_transfer=passed\n' > "$artifacts/TEKTON-METADATA"
       params:
         - name: conversion-host
           value: $(params.conversion-host)
         - name: conversion-user
           value: $(params.conversion-user)
       workspaces:
-        - name: source
-          workspace: source
-        - name: artifacts
-          workspace: artifacts
+        - name: workspace
+          workspace: workspace
 ---
 apiVersion: tekton.dev/v1
 kind: Pipeline
@@ -116,8 +100,7 @@ spec:
       type: string
       default: /dev/nvme1n1
   workspaces:
-    - name: source
-    - name: artifacts
+    - name: workspace
   tasks:
     - name: deploy-and-verify-qemu
       taskSpec:
@@ -129,8 +112,7 @@ spec:
           - name: target-disk
             type: string
         workspaces:
-          - name: source
-          - name: artifacts
+          - name: workspace
         volumes:
           - name: vm-ssh
             secret:
@@ -153,10 +135,13 @@ spec:
               host="$(params.deployment-user)@$(params.deployment-host)"
               remote=/var/tmp/anomalynet/tekton-deploy
               ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
-              tar -C "$(workspaces.artifacts.path)" -cf - . | \
+              root="$(workspaces.workspace.path)"
+              source="$root/source"
+              artifacts="$root/artifacts"
+              tar -C "$artifacts" -cf - . | \
                 ssh -i "$key" "$host" "tar -C '$remote' -xf -"
               scp -i "$key" \
-                "$(workspaces.source.path)/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-qemu-deploy-verify.sh" \
+                "$source/repo/yocto-poc/bootc-chunked-inference/scripts/fedora-qemu-deploy-verify.sh" \
                 "$host:$remote/deploy.sh"
               ssh -tt -i "$key" "$host" \
                 "chmod 755 '$remote/deploy.sh' && '$remote/deploy.sh' '$remote' '$(params.target-disk)'"
@@ -169,10 +154,8 @@ spec:
         - name: target-disk
           value: $(params.target-disk)
       workspaces:
-        - name: source
-          workspace: source
-        - name: artifacts
-          workspace: artifacts
+        - name: workspace
+          workspace: workspace
 ---
 apiVersion: tekton.dev/v1
 kind: PipelineRun
@@ -191,12 +174,9 @@ spec:
   taskRunTemplate:
     serviceAccountName: pipeline
   workspaces:
-    - name: source
+    - name: workspace
       persistentVolumeClaim:
         claimName: phase4-yocto-workspace
-    - name: artifacts
-      persistentVolumeClaim:
-        claimName: phase5-anomalynet-v3-artifacts-32830c0
 ---
 apiVersion: tekton.dev/v1
 kind: PipelineRun
@@ -215,9 +195,6 @@ spec:
   taskRunTemplate:
     serviceAccountName: pipeline
   workspaces:
-    - name: source
+    - name: workspace
       persistentVolumeClaim:
         claimName: phase4-yocto-workspace
-    - name: artifacts
-      persistentVolumeClaim:
-        claimName: phase5-anomalynet-v3-artifacts-32830c0

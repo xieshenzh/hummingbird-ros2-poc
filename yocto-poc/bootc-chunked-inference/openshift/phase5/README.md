@@ -48,9 +48,9 @@ KubeVirt:
 1. `anomalynet-v3-convert-collect-vm` transfers the validated OCI layout to a
    dedicated Fedora conversion VM over SSH, runs
    `scripts/fedora-vm-convert-collect.sh`, and copies the generated
-   `disk.img`, kernel, initramfs, checksums, and metadata back into the owned
-   `phase5-anomalynet-v3-artifacts-32830c0` PVC.
-2. `anomalynet-v3-deploy-qemu-vm` transfers that PVC content to the separate
+   `disk.img`, kernel, initramfs, checksums, and metadata back into the
+   `artifacts/` directory of the owned Phase 4 workspace PVC.
+2. `anomalynet-v3-deploy-qemu-vm` transfers that `artifacts/` content to the separate
    deployment VM, runs `scripts/fedora-qemu-deploy-verify.sh`, and performs
    the guarded target-disk write plus QEMU/serial validation there.
 
