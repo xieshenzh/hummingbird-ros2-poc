@@ -23,8 +23,8 @@ builder_image=${BOOTC_IMAGE_BUILDER_IMAGE:-quay.io/centos-bootc/bootc-image-buil
 sudo podman pull "$builder_image" >/dev/null
 sudo podman run --rm --privileged --pid=host --network=host \
   --security-opt label=disable \
-  -v /var/lib/containers:/var/lib/containers \
-  -v /run/containers:/run/containers \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
   -v "$tmp_output":/output \
   "$builder_image" --type raw --rootfs ext4 \
