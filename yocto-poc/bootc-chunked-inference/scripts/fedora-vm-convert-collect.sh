@@ -27,7 +27,7 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /run/containers:/run/containers \
   -v /dev:/dev \
   -v "$tmp_output":/output \
-  "$builder_image" bootc-image-builder --type raw --rootfs ext4 \
+  "$builder_image" --type raw --rootfs ext4 \
   --output /output "$image_ref"
 raw=$(find "$tmp_output" -type f \( -name '*.raw' -o -name '*.img' \) -print -quit)
 test -n "$raw"
