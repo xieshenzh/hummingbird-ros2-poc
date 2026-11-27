@@ -9,6 +9,10 @@ command -v podman >/dev/null
 for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount find; do
   command -v "$tool" >/dev/null
 done
+if ! command -v skopeo >/dev/null; then
+  command -v dnf >/dev/null
+  sudo dnf install -y skopeo >/dev/null
+fi
 
 rm -rf "$output_dir"
 mkdir -p "$output_dir/boot-assets"
