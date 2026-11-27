@@ -56,5 +56,7 @@ for deployment in "${deployments[@]}"; do
         "$deployment/sys" "$deployment/boot"
 done
 
-"$0" --check "$mount_root"
+if ! $check_only; then
+    "$0" --check "$mount_root"
+fi
 printf 'OSTree deployment repair validated: %d deployment(s)\n' "${#deployments[@]}"
