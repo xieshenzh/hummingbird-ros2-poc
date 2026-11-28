@@ -7,7 +7,7 @@ output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
-for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount find; do
+for tool in podman qemu-img losetup mount umount find; do
   command -v "$tool" >/dev/null
 done
 if ! command -v skopeo >/dev/null; then
@@ -27,41 +27,30 @@ test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
 
-disk_size=${3:-4G}
-truncate -s "$disk_size" "$output_dir/disk.img"
-mkdir -p "$output_dir/mnt"
-sfdisk "$output_dir/disk.img" <<'EOF'
-label: gpt
-start=2048,size=2048,type=21686148-6449-6E6F-744E-656564454649,name=bios
-size=524288,type=uefi,name=esp
-type=linux,name=root
-EOF
-
-loop=$(sudo losetup --find --show --partscan "$output_dir/disk.img")
-cleanup_loop() {
-  sudo umount "$output_dir/mnt/boot/efi" 2>/dev/null || true
-  sudo umount "$output_dir/mnt" 2>/dev/null || true
-  sudo losetup -d "$loop" 2>/dev/null || true
-}
-trap cleanup_loop EXIT
-sudo mkfs.vfat -n ESP "${loop}p2" >/dev/null
-sudo mkfs.ext4 -q -L root "${loop}p3"
-sudo mount "${loop}p3" "$output_dir/mnt"
-sudo mkdir -p "$output_dir/mnt/boot/efi"
-sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
-
-# Use the native bootc installer path proven on the Fedora conversion VM. The
-# generic bootc-image-builder does not recognize this chunked bootc image even
-# though bootc container lint accepts it.
+tmp_output=$(mktemp -d)
+cleanup_output() { rm -rf "$tmp_output"; }
+trap cleanup_output EXIT
+builder_image=${BOOTC_IMAGE_BUILDER_IMAGE:-quay.io/centos-bootc/bootc-image-builder:latest}
+sudo podman pull "$builder_image" >/dev/null
 sudo podman run --rm --privileged --pid=host --network=host \
   --security-opt label=disable \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
-  -v "$output_dir/mnt":"$output_dir/mnt" \
-  --entrypoint bootc "$image_ref" install to-filesystem "$output_dir/mnt" \
-  --target-transport containers-storage --target-imgref "$image_ref" \
-  --disable-selinux
+  -v "$tmp_output":/output \
+  "$builder_image" --type raw --rootfs ext4 --output /output "$image_ref"
+raw=$(find "$tmp_output" -type f \( -name '*.raw' -o -name '*.img' \) -print -quit)
+test -n "$raw"
+cp "$raw" "$output_dir/disk.img"
+
+loop=$(sudo losetup --find --show --partscan "$output_dir/disk.img")
+cleanup_loop() {
+  sudo umount "$output_dir/mnt" 2>/dev/null || true
+  sudo losetup -d "$loop" 2>/dev/null || true
+}
+trap cleanup_loop EXIT
+mkdir -p "$output_dir/mnt"
+sudo mount "${loop}p3" "$output_dir/mnt"
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
 deploy_root="$output_dir/mnt/ostree/deploy/default/deploy"
