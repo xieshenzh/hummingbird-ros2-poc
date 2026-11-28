@@ -59,7 +59,8 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /dev:/dev \
   -v "$output_dir/mnt":/target \
   --entrypoint bootc "$image_ref" install to-filesystem /target \
-  --target-imgref "$image_ref" --disable-selinux
+  --target-transport containers-storage --target-imgref "$image_ref" \
+  --disable-selinux
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
 deploy_root="$output_dir/mnt/ostree/deploy/default/deploy"
