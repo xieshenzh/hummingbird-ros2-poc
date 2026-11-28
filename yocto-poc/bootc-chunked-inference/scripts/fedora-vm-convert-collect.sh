@@ -6,6 +6,7 @@ oci_dir=${1:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
 target_path=/target/anomalynet-v3
+install_target=/proc/1/root/target/anomalynet-v3
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
 for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint nsenter find; do
@@ -88,8 +89,7 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
-  -v "$target_path":"$target_path" \
-  --entrypoint bootc "$image_ref" install to-filesystem "$target_path" \
+  --entrypoint bootc "$image_ref" install to-filesystem "$install_target" \
   --target-transport containers-storage --target-imgref "$image_ref" \
   --disable-selinux
 
