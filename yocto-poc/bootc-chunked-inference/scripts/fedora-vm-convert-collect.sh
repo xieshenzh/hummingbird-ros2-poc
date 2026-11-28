@@ -20,6 +20,10 @@ unmount_stale_target() {
   sudo nsenter -t 1 -m -- umount -R -l "$output_dir/mnt" 2>/dev/null || true
 }
 unmount_stale_target
+if ! sudo rm -rf "$output_dir" 2>/dev/null; then
+  stale_dir="${output_dir}.stale-$(date -u +%Y%m%d%H%M%S)"
+  sudo mv "$output_dir" "$stale_dir"
+fi
 sudo rm -rf "$output_dir"
 mkdir -p "$output_dir/boot-assets"
 sudo podman pull "oci:$oci_dir" >/dev/null
