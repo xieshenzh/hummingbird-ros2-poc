@@ -16,6 +16,7 @@ if ! command -v skopeo >/dev/null; then
 fi
 
 unmount_stale_target() {
+  sudo umount -R -l "$output_dir/mnt" 2>/dev/null || true
   sudo nsenter -t 1 -m -- umount -R -l "$output_dir/mnt" 2>/dev/null || true
 }
 unmount_stale_target
