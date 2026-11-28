@@ -43,6 +43,16 @@ image_id=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$manifest_
 test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
+prepare_dir=$(mktemp -d)
+trap 'rm -rf "$prepare_dir"' EXIT
+cat > "$prepare_dir/Containerfile" <<EOF
+FROM $image_ref
+USER 0
+RUN mkdir -p /etc/ostree && printf '%s\\n' '[composefs]' 'enabled = false' '[sysroot]' 'readonly = true' > /etc/ostree/prepare-root.conf
+EOF
+install_ref="localhost/anomalynet-v3:tekton-prepared-$(date -u +%Y%m%d%H%M%S)"
+sudo podman build --security-opt label=disable --network=host \
+  -t "$install_ref" "$prepare_dir" >/dev/null
 
 disk_size=${3:-4G}
 truncate -s "$disk_size" "$output_dir/disk.img"
@@ -89,8 +99,8 @@ sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh 
 # Run bootc directly on the Fedora conversion VM. The host process already
 # owns the mounted target, avoiding the container-to-host mount namespace gap.
 sudo bootc install to-filesystem "$output_dir/mnt" \
-  --source-imgref "containers-storage:$image_ref" \
-  --target-transport containers-storage --target-imgref "$image_ref" \
+  --source-imgref "containers-storage:$install_ref" \
+  --target-transport containers-storage --target-imgref "$install_ref" \
   --disable-selinux
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
