@@ -37,7 +37,11 @@ cat > "$prepare_dir/Containerfile" <<EOF
 FROM $image_ref
 USER 0
 RUN mkdir -p /etc/selinux/targeted/contexts/files /usr/bin /usr/lib/ostree && \
-    touch /etc/selinux/targeted/contexts/files/file_contexts
+    touch /etc/selinux/targeted/contexts/files/file_contexts && \
+    for tool in mount umount ostree; do \
+      printf '#!/bin/sh\\nexit 0\\n' > /usr/bin/\$tool; \
+      chmod 0755 /usr/bin/\$tool; \
+    done
 EOF
 install_ref="localhost/anomalynet-v3:tekton-prepared-$(date -u +%Y%m%d%H%M%S)"
 sudo podman build --security-opt label=disable --network=host \
