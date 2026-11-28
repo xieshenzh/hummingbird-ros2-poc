@@ -55,7 +55,7 @@ spec:
               cp /var/run/anomalynet-vm-ssh/privateKey "$key"
               chmod 600 "$key"
               host="$(params.conversion-user)@$(params.conversion-host)"
-              remote="/home/$(params.conversion-user)/anomalynet-tekton-convert"
+              remote="/var/tmp/anomalynet-tekton-convert"
               # Keep the conversion output directory intact so the helper can
               # quarantine any stale mount tree before recreating it. Remove
               # only the replaceable input and wrapper files here.
