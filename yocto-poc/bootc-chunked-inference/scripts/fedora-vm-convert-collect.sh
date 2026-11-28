@@ -6,10 +6,9 @@ oci_dir=${1:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
 target_path=/target/anomalynet-v3
-install_target=/proc/1/root/target/anomalynet-v3
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
-for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint nsenter find; do
+for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint nsenter find python3; do
   command -v "$tool" >/dev/null
 done
 if ! command -v skopeo >/dev/null; then
@@ -20,6 +19,60 @@ if ! command -v bootc >/dev/null; then
   command -v dnf >/dev/null
   sudo dnf install -y bootc >/dev/null
 fi
+
+# bootc probes prepare-root.conf in the encapsulated base layer before it
+# imports later derived layers. Patch the transferred OCI layout directly,
+# matching assemble-chunked-bootc.py, rather than adding an ignored image layer.
+python3 - "$oci_dir" <<'PY'
+import gzip, hashlib, io, json, sys, tarfile
+from pathlib import Path
+
+oci = Path(sys.argv[1])
+blobs = oci / "blobs" / "sha256"
+index_path = oci / "index.json"
+index = json.loads(index_path.read_text())
+entry = index["manifests"][0]
+manifest_path = blobs / entry["digest"].split(":", 1)[1]
+manifest = json.loads(manifest_path.read_text())
+layer = manifest["layers"][0]
+layer_path = blobs / layer["digest"].split(":", 1)[1]
+raw = layer_path.read_bytes()
+plain = gzip.decompress(raw) if "gzip" in layer.get("mediaType", "") else raw
+probe = "usr/lib/ostree/prepare-root.conf"
+with tarfile.open(fileobj=io.BytesIO(plain), mode="r:") as archive:
+    members = archive.getmembers()
+    if probe not in {m.name.rstrip("/") for m in members}:
+        rebuilt = io.BytesIO()
+        with tarfile.open(fileobj=rebuilt, mode="w") as output:
+            for member in members:
+                payload = archive.extractfile(member) if member.isfile() else None
+                output.addfile(member, payload)
+            names = {m.name.rstrip("/") for m in members}
+            for directory in ("usr", "usr/lib", "usr/lib/ostree"):
+                if directory not in names:
+                    output.addfile(tarfile.TarInfo(directory + "/"))
+            content = b"[composefs]\nenabled = false\n[sysroot]\nreadonly = true\n"
+            info = tarfile.TarInfo(probe)
+            info.mode, info.size = 0o644, len(content)
+            output.addfile(info, io.BytesIO(content))
+        plain = rebuilt.getvalue()
+        compressed = gzip.compress(plain, mtime=0) if "gzip" in layer.get("mediaType", "") else plain
+        new_layer_digest = "sha256:" + hashlib.sha256(compressed).hexdigest()
+        (blobs / new_layer_digest.split(":", 1)[1]).write_bytes(compressed)
+        layer.update(digest=new_layer_digest, size=len(compressed))
+        config_path = blobs / manifest["config"]["digest"].split(":", 1)[1]
+        config = json.loads(config_path.read_text())
+        config["rootfs"]["diff_ids"][0] = "sha256:" + hashlib.sha256(plain).hexdigest()
+        config_bytes = json.dumps(config, separators=(",", ":")).encode()
+        config_digest = "sha256:" + hashlib.sha256(config_bytes).hexdigest()
+        (blobs / config_digest.split(":", 1)[1]).write_bytes(config_bytes)
+        manifest["config"].update(digest=config_digest, size=len(config_bytes))
+        manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode()
+        manifest_digest = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+        (blobs / manifest_digest.split(":", 1)[1]).write_bytes(manifest_bytes)
+        entry.update(digest=manifest_digest, size=len(manifest_bytes))
+        index_path.write_text(json.dumps(index, indent=2) + "\n")
+PY
 
 unmount_stale_target() {
   sudo umount -R -l "$target_path" 2>/dev/null || true
@@ -43,16 +96,6 @@ image_id=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$manifest_
 test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
-prepare_dir=$(mktemp -d)
-trap 'rm -rf "$prepare_dir"' EXIT
-cat > "$prepare_dir/Containerfile" <<EOF
-FROM $image_ref
-USER 0
-RUN mkdir -p /etc/ostree && printf '%s\\n' '[composefs]' 'enabled = false' '[sysroot]' 'readonly = true' > /etc/ostree/prepare-root.conf
-EOF
-install_ref="localhost/anomalynet-v3:tekton-prepared-$(date -u +%Y%m%d%H%M%S)"
-sudo podman build --security-opt label=disable --network=host \
-  -t "$install_ref" "$prepare_dir" >/dev/null
 
 disk_size=${3:-4G}
 truncate -s "$disk_size" "$output_dir/disk.img"
@@ -99,8 +142,8 @@ sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh 
 # Run bootc directly on the Fedora conversion VM. The host process already
 # owns the mounted target, avoiding the container-to-host mount namespace gap.
 sudo bootc install to-filesystem "$output_dir/mnt" \
-  --source-imgref "containers-storage:$install_ref" \
-  --target-transport containers-storage --target-imgref "$install_ref" \
+  --source-imgref "containers-storage:$image_ref" \
+  --target-transport containers-storage --target-imgref "$image_ref" \
   --disable-selinux
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
