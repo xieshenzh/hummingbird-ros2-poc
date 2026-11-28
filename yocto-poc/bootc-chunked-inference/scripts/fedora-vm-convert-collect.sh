@@ -15,7 +15,12 @@ if ! command -v skopeo >/dev/null; then
   sudo dnf install -y skopeo >/dev/null
 fi
 
-rm -rf "$output_dir"
+unmount_stale_target() {
+  sudo nsenter -t 1 -m -- umount -l "$output_dir/mnt/boot/efi" 2>/dev/null || true
+  sudo nsenter -t 1 -m -- umount -l "$output_dir/mnt" 2>/dev/null || true
+}
+unmount_stale_target
+sudo rm -rf "$output_dir"
 mkdir -p "$output_dir/boot-assets"
 sudo podman pull "oci:$oci_dir" >/dev/null
 manifest_digest=$(grep -o '"digest"[[:space:]]*:[[:space:]]*"sha256:[^"]*"' "$oci_dir/index.json" | head -1 | sed 's/.*"sha256:/sha256:/' | sed 's/"$//')
@@ -39,8 +44,7 @@ EOF
 
 loop=$(sudo losetup --find --show --partscan "$output_dir/disk.img")
 cleanup_loop() {
-  sudo nsenter -t 1 -m -- umount "$output_dir/mnt/boot/efi" 2>/dev/null || true
-  sudo nsenter -t 1 -m -- umount "$output_dir/mnt" 2>/dev/null || true
+  unmount_stale_target
   sudo losetup -d "$loop" 2>/dev/null || true
 }
 trap cleanup_loop EXIT
