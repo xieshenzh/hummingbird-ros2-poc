@@ -5,80 +5,45 @@ set -euo pipefail
 oci_dir=${1:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
-target_path=/target/anomalynet-v3
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
-for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint nsenter find python3; do
+for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint find; do
   command -v "$tool" >/dev/null
 done
 if ! command -v skopeo >/dev/null; then
   command -v dnf >/dev/null
   sudo dnf install -y skopeo >/dev/null
 fi
-if ! command -v bootc >/dev/null; then
-  command -v dnf >/dev/null
-  sudo dnf install -y bootc >/dev/null
-fi
-
-# bootc probes prepare-root.conf in the encapsulated base layer before it
-# imports later derived layers. Patch the transferred OCI layout directly,
-# matching assemble-chunked-bootc.py, rather than adding an ignored image layer.
-python3 - "$oci_dir" <<'PY'
-import gzip, hashlib, io, json, sys, tarfile
-from pathlib import Path
-
-oci = Path(sys.argv[1])
-blobs = oci / "blobs" / "sha256"
-index_path = oci / "index.json"
-index = json.loads(index_path.read_text())
-entry = index["manifests"][0]
-manifest_path = blobs / entry["digest"].split(":", 1)[1]
-manifest = json.loads(manifest_path.read_text())
-layer = manifest["layers"][0]
-layer_path = blobs / layer["digest"].split(":", 1)[1]
-raw = layer_path.read_bytes()
-plain = gzip.decompress(raw) if "gzip" in layer.get("mediaType", "") else raw
-probe = "usr/lib/ostree/prepare-root.conf"
-with tarfile.open(fileobj=io.BytesIO(plain), mode="r:") as archive:
-    members = archive.getmembers()
-    if probe not in {m.name.rstrip("/") for m in members}:
-        rebuilt = io.BytesIO()
-        with tarfile.open(fileobj=rebuilt, mode="w") as output:
-            for member in members:
-                payload = archive.extractfile(member) if member.isfile() else None
-                output.addfile(member, payload)
-            names = {m.name.rstrip("/") for m in members}
-            for directory in ("usr", "usr/lib", "usr/lib/ostree"):
-                if directory not in names:
-                    output.addfile(tarfile.TarInfo(directory + "/"))
-            content = b"[composefs]\nenabled = false\n[sysroot]\nreadonly = true\n"
-            info = tarfile.TarInfo(probe)
-            info.mode, info.size = 0o644, len(content)
-            output.addfile(info, io.BytesIO(content))
-        plain = rebuilt.getvalue()
-        compressed = gzip.compress(plain, mtime=0) if "gzip" in layer.get("mediaType", "") else plain
-        new_layer_digest = "sha256:" + hashlib.sha256(compressed).hexdigest()
-        (blobs / new_layer_digest.split(":", 1)[1]).write_bytes(compressed)
-        layer.update(digest=new_layer_digest, size=len(compressed))
-        config_path = blobs / manifest["config"]["digest"].split(":", 1)[1]
-        config = json.loads(config_path.read_text())
-        config["rootfs"]["diff_ids"][0] = "sha256:" + hashlib.sha256(plain).hexdigest()
-        config_bytes = json.dumps(config, separators=(",", ":")).encode()
-        config_digest = "sha256:" + hashlib.sha256(config_bytes).hexdigest()
-        (blobs / config_digest.split(":", 1)[1]).write_bytes(config_bytes)
-        manifest["config"].update(digest=config_digest, size=len(config_bytes))
-        manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode()
-        manifest_digest = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
-        (blobs / manifest_digest.split(":", 1)[1]).write_bytes(manifest_bytes)
-        entry.update(digest=manifest_digest, size=len(manifest_bytes))
-        index_path.write_text(json.dumps(index, indent=2) + "\n")
-PY
+wrap_dir=/var/tmp/anomalynet-bootc-wrap
+containers_cfg=/var/tmp/anomalynet-bootc-containers-cfg
+host_loader=/host-lib64/ld-linux-x86-64.so.2
+mkdir -p "$wrap_dir" "$containers_cfg"
+wrap_host_tool() {
+  printf '#!/bin/sh\nexec %s --library-path /host-lib:/host-lib64 %s "$@"\n' \
+    "$host_loader" "$2" > "$wrap_dir/$1"
+  chmod +x "$wrap_dir/$1"
+}
+for tool in skopeo findmnt lsblk blkid fstrim fsfreeze sfdisk podman conmon crun; do
+  wrap_host_tool "$tool" "/usr/bin/$tool.real"
+done
+wrap_host_tool netavark /usr/libexec/podman/netavark
+printf '#!/bin/sh\nexit 0\n' > "$wrap_dir/bootupctl"
+chmod +x "$wrap_dir/bootupctl"
+cat > "$containers_cfg/policy.json" <<'EOF'
+{"default":[{"type":"insecureAcceptAnything"}]}
+EOF
+cat > "$containers_cfg/registries.conf" <<'EOF'
+[[registry]]
+location = "localhost:5000"
+insecure = true
+EOF
+cat > "$containers_cfg/containers.conf" <<'EOF'
+[engine]
+helper_binaries_dir = ["/usr/local/bin/skopeo-dir"]
+EOF
 
 unmount_stale_target() {
-  sudo umount -R -l "$target_path" 2>/dev/null || true
-  sudo nsenter -t 1 -m -- umount -R -l "$target_path" 2>/dev/null || true
   sudo umount -R -l "$output_dir/mnt" 2>/dev/null || true
-  sudo nsenter -t 1 -m -- umount -R -l "$output_dir/mnt" 2>/dev/null || true
 }
 unmount_stale_target
 if ! sudo rm -rf "$output_dir" 2>/dev/null; then
@@ -115,36 +80,27 @@ cleanup_loop() {
 trap cleanup_loop EXIT
 sudo mkfs.vfat -n ESP "${loop}p2" >/dev/null
 sudo mkfs.ext4 -q -L root "${loop}p3"
-# bootc re-execs in the VM's init mount namespace. Mount there explicitly so
-# the target remains visible after that re-exec rather than only in the SSH
-# session's mount namespace.
-sudo mkdir -p "$target_path"
-sudo nsenter -t 1 -m -- mkdir -p "$target_path"
-if ! sudo mountpoint -q "$output_dir/mnt"; then
-  sudo mount "${loop}p3" "$output_dir/mnt"
-fi
+sudo mount "${loop}p3" "$output_dir/mnt"
 sudo mkdir -p "$output_dir/mnt/boot/efi"
-if ! sudo mountpoint -q "$output_dir/mnt/boot/efi"; then
-  sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
-fi
-if ! sudo mountpoint -q "$target_path"; then
-  sudo mount --bind "$output_dir/mnt" "$target_path"
-fi
-sudo nsenter -t 1 -m -- mkdir -p "$target_path"
-sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount "$2" "$1"' sh \
-  "$output_dir/mnt" "${loop}p3"
-sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
-sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount "$2" "$1"' sh \
-  "$output_dir/mnt/boot/efi" "${loop}p2"
-sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh \
-  "$target_path" "$output_dir/mnt"
+sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
 
-# Run bootc directly on the Fedora conversion VM. The host process already
-# owns the mounted target, avoiding the container-to-host mount namespace gap.
-sudo bootc install to-filesystem "$output_dir/mnt" \
-  --source-imgref "containers-storage:$image_ref" \
-  --target-transport containers-storage --target-imgref "$image_ref" \
-  --disable-selinux
+host_tools=""
+for tool in lsblk blkid findmnt fstrim fsfreeze sfdisk podman conmon crun; do
+  host_tools="$host_tools -v /usr/bin/$tool:/usr/bin/$tool.real:ro"
+done
+sudo podman run --rm --privileged --pid=host --network=host \
+  --security-opt label=disable \
+  -v /var/lib/containers:/var/lib/containers \
+  -v "$wrap_dir":/usr/local/bin/skopeo-dir:ro \
+  -v /usr/bin/skopeo:/usr/bin/skopeo.real:ro \
+  -v /usr/libexec/podman:/usr/libexec/podman:ro \
+  $host_tools \
+  -v /lib:/host-lib:ro -v /lib64:/host-lib64:ro \
+  -v "$containers_cfg":/etc/containers:ro \
+  -v /dev:/dev -v "$output_dir/mnt":/target \
+  -e PATH=/usr/local/bin/skopeo-dir:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  "$image_ref" bootc install to-filesystem /target \
+  --target-imgref "$image_ref" --disable-selinux
 
 # Repair the deployment-local mount points required by the Yocto initramfs.
 deploy_root="$output_dir/mnt/ostree/deploy/default/deploy"
