@@ -16,6 +16,10 @@ if ! command -v skopeo >/dev/null; then
   command -v dnf >/dev/null
   sudo dnf install -y skopeo >/dev/null
 fi
+if ! command -v bootc >/dev/null; then
+  command -v dnf >/dev/null
+  sudo dnf install -y bootc >/dev/null
+fi
 
 unmount_stale_target() {
   sudo umount -R -l "$target_path" 2>/dev/null || true
@@ -82,14 +86,10 @@ sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount "$2" "$1"' sh \
 sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh \
   "$target_path" "$output_dir/mnt"
 
-# The target directory is a real host mount. bootc re-execs into the host
-# mount namespace, so binding this same absolute path keeps it visible there.
-sudo podman run --rm --privileged --pid=host --network=host \
-  --security-opt label=disable \
-  -v /var/lib/containers/storage:/var/lib/containers/storage \
-  -v /run/containers/storage:/run/containers/storage \
-  -v /dev:/dev \
-  --entrypoint bootc "$image_ref" install to-filesystem "$install_target" \
+# Run bootc directly on the Fedora conversion VM. The host process already
+# owns the mounted target, avoiding the container-to-host mount namespace gap.
+sudo bootc install to-filesystem "$output_dir/mnt" \
+  --source-imgref "containers-storage:$image_ref" \
   --target-transport containers-storage --target-imgref "$image_ref" \
   --disable-selinux
 
