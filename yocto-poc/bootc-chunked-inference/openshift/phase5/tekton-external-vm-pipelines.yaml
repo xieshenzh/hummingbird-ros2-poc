@@ -56,7 +56,10 @@ spec:
               chmod 600 "$key"
               host="$(params.conversion-user)@$(params.conversion-host)"
               remote="/home/$(params.conversion-user)/anomalynet-tekton-convert"
-              ssh -i "$key" "$host" "rm -rf '$remote' && mkdir -p '$remote'"
+              # Keep the conversion output directory intact so the helper can
+              # quarantine any stale mount tree before recreating it. Remove
+              # only the replaceable input and wrapper files here.
+              ssh -i "$key" "$host" "mkdir -p '$remote' && rm -rf '$remote/generic-inference-bootc-image-hybrid.oci' '$remote/convert.sh'"
               root="$(workspaces.workspace.path)"
               source="$root"
               artifacts="$root/output/tekton-artifacts-32830c0"
