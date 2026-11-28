@@ -27,6 +27,22 @@ test -n "$image_id"
 image_ref="localhost/anomalynet-v3:tekton-$(date -u +%Y%m%d%H%M%S)"
 sudo podman tag "$image_id" "$image_ref"
 
+# osbuild expects the SELinux context database even when the source image is
+# built with SELinux disabled. Add the same empty context file used by the
+# project's earlier conversion workaround in a temporary derived image.
+prepare_dir=$(mktemp -d)
+cleanup_prepare() { rm -rf "$prepare_dir"; }
+trap cleanup_prepare EXIT
+cat > "$prepare_dir/Containerfile" <<EOF
+FROM $image_ref
+USER 0
+RUN mkdir -p /etc/selinux/targeted/contexts/files /usr/bin /usr/lib/ostree && \
+    touch /etc/selinux/targeted/contexts/files/file_contexts
+EOF
+install_ref="localhost/anomalynet-v3:tekton-prepared-$(date -u +%Y%m%d%H%M%S)"
+sudo podman build --security-opt label=disable --network=host \
+  -t "$install_ref" "$prepare_dir" >/dev/null
+
 tmp_output=$(mktemp -d)
 cleanup_output() { rm -rf "$tmp_output"; }
 trap cleanup_output EXIT
@@ -38,7 +54,7 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
   -v "$tmp_output":/output \
-  "$builder_image" --type raw --rootfs ext4 --output /output "$image_ref"
+  "$builder_image" --type raw --rootfs ext4 --output /output "$install_ref"
 raw=$(find "$tmp_output" -type f \( -name '*.raw' -o -name '*.img' \) -print -quit)
 test -n "$raw"
 cp "$raw" "$output_dir/disk.img"
