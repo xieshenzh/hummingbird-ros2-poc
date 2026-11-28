@@ -7,7 +7,7 @@ output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
-for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount find; do
+for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount nsenter find; do
   command -v "$tool" >/dev/null
 done
 if ! command -v skopeo >/dev/null; then
@@ -39,16 +39,19 @@ EOF
 
 loop=$(sudo losetup --find --show --partscan "$output_dir/disk.img")
 cleanup_loop() {
-  sudo umount "$output_dir/mnt/boot/efi" 2>/dev/null || true
-  sudo umount "$output_dir/mnt" 2>/dev/null || true
+  sudo nsenter -t 1 -m -- umount "$output_dir/mnt/boot/efi" 2>/dev/null || true
+  sudo nsenter -t 1 -m -- umount "$output_dir/mnt" 2>/dev/null || true
   sudo losetup -d "$loop" 2>/dev/null || true
 }
 trap cleanup_loop EXIT
 sudo mkfs.vfat -n ESP "${loop}p2" >/dev/null
 sudo mkfs.ext4 -q -L root "${loop}p3"
-sudo mount "${loop}p3" "$output_dir/mnt"
-sudo mkdir -p "$output_dir/mnt/boot/efi"
-sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
+# bootc re-execs in the VM's init mount namespace. Mount there explicitly so
+# the target remains visible after that re-exec rather than only in the SSH
+# session's mount namespace.
+sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
+sudo nsenter -t 1 -m -- mount "${loop}p3" "$output_dir/mnt"
+sudo nsenter -t 1 -m -- mount "${loop}p2" "$output_dir/mnt/boot/efi"
 
 # The target directory is a real host mount. bootc re-execs into the host
 # mount namespace, so binding this same absolute path keeps it visible there.
