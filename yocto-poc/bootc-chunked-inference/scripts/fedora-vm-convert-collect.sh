@@ -83,7 +83,7 @@ sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh 
 
 # The target directory is a real host mount. bootc re-execs into the host
 # mount namespace, so binding this same absolute path keeps it visible there.
-sudo podman run --rm --privileged --pid=host --network=host \
+sudo podman run --rm --privileged --network=host \
   --security-opt label=disable \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   -v /run/containers/storage:/run/containers/storage \
