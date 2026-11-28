@@ -8,7 +8,7 @@ output_dir=$(readlink -f "$output_dir")
 target_path=/target/anomalynet-v3
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
-for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount nsenter find; do
+for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount mountpoint nsenter find; do
   command -v "$tool" >/dev/null
 done
 if ! command -v skopeo >/dev/null; then
@@ -60,11 +60,26 @@ sudo mkfs.ext4 -q -L root "${loop}p3"
 # bootc re-execs in the VM's init mount namespace. Mount there explicitly so
 # the target remains visible after that re-exec rather than only in the SSH
 # session's mount namespace.
+sudo mkdir -p "$target_path"
 sudo nsenter -t 1 -m -- mkdir -p "$target_path"
-sudo nsenter -t 1 -m -- mount "${loop}p3" "$output_dir/mnt"
+if ! sudo mountpoint -q "$output_dir/mnt"; then
+  sudo mount "${loop}p3" "$output_dir/mnt"
+fi
+sudo mkdir -p "$output_dir/mnt/boot/efi"
+if ! sudo mountpoint -q "$output_dir/mnt/boot/efi"; then
+  sudo mount "${loop}p2" "$output_dir/mnt/boot/efi"
+fi
+if ! sudo mountpoint -q "$target_path"; then
+  sudo mount --bind "$output_dir/mnt" "$target_path"
+fi
+sudo nsenter -t 1 -m -- mkdir -p "$target_path"
+sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount "$2" "$1"' sh \
+  "$output_dir/mnt" "${loop}p3"
 sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
-sudo nsenter -t 1 -m -- mount "${loop}p2" "$output_dir/mnt/boot/efi"
-sudo nsenter -t 1 -m -- mount --bind "$output_dir/mnt" "$target_path"
+sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount "$2" "$1"' sh \
+  "$output_dir/mnt/boot/efi" "${loop}p2"
+sudo nsenter -t 1 -m -- sh -c 'mountpoint -q "$1" || mount --bind "$2" "$1"' sh \
+  "$target_path" "$output_dir/mnt"
 
 # The target directory is a real host mount. bootc re-execs into the host
 # mount namespace, so binding this same absolute path keeps it visible there.
