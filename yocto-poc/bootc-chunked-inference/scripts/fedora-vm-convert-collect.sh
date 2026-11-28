@@ -49,8 +49,8 @@ sudo mkfs.ext4 -q -L root "${loop}p3"
 # bootc re-execs in the VM's init mount namespace. Mount there explicitly so
 # the target remains visible after that re-exec rather than only in the SSH
 # session's mount namespace.
-sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
 sudo nsenter -t 1 -m -- mount "${loop}p3" "$output_dir/mnt"
+sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
 sudo nsenter -t 1 -m -- mount "${loop}p2" "$output_dir/mnt/boot/efi"
 
 # The target directory is a real host mount. bootc re-execs into the host
