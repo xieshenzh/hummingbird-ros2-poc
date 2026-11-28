@@ -5,6 +5,7 @@ set -euo pipefail
 oci_dir=${1:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=${2:?usage: $0 <oci-dir> <output-dir> [disk-size]}
 output_dir=$(readlink -f "$output_dir")
+target_path=/target/anomalynet-v3
 test -f "$oci_dir/index.json"
 command -v podman >/dev/null
 for tool in podman qemu-img sfdisk mkfs.vfat mkfs.ext4 losetup mount umount nsenter find; do
@@ -16,6 +17,8 @@ if ! command -v skopeo >/dev/null; then
 fi
 
 unmount_stale_target() {
+  sudo umount -R -l "$target_path" 2>/dev/null || true
+  sudo nsenter -t 1 -m -- umount -R -l "$target_path" 2>/dev/null || true
   sudo umount -R -l "$output_dir/mnt" 2>/dev/null || true
   sudo nsenter -t 1 -m -- umount -R -l "$output_dir/mnt" 2>/dev/null || true
 }
@@ -57,9 +60,11 @@ sudo mkfs.ext4 -q -L root "${loop}p3"
 # bootc re-execs in the VM's init mount namespace. Mount there explicitly so
 # the target remains visible after that re-exec rather than only in the SSH
 # session's mount namespace.
+sudo nsenter -t 1 -m -- mkdir -p "$target_path"
 sudo nsenter -t 1 -m -- mount "${loop}p3" "$output_dir/mnt"
 sudo nsenter -t 1 -m -- mkdir -p "$output_dir/mnt/boot/efi"
 sudo nsenter -t 1 -m -- mount "${loop}p2" "$output_dir/mnt/boot/efi"
+sudo nsenter -t 1 -m -- mount --bind "$output_dir/mnt" "$target_path"
 
 # The target directory is a real host mount. bootc re-execs into the host
 # mount namespace, so binding this same absolute path keeps it visible there.
@@ -68,8 +73,8 @@ sudo podman run --rm --privileged --pid=host --network=host \
   -v /var/lib/containers/storage:/var/lib/containers/storage \
   -v /run/containers/storage:/run/containers/storage \
   -v /dev:/dev \
-  -v "$output_dir/mnt":"$output_dir/mnt" \
-  --entrypoint bootc "$image_ref" install to-filesystem "$output_dir/mnt" \
+  -v "$target_path":"$target_path" \
+  --entrypoint bootc "$image_ref" install to-filesystem "$target_path" \
   --target-transport containers-storage --target-imgref "$image_ref" \
   --disable-selinux
 
